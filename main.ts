@@ -1,24 +1,47 @@
-// A working gta6-01 entry (Node 22, standard library only): the game is this directory's
-// game/ folder, plain static files a desktop browser loads offline (game/index.html and its ES
-// modules, no library and no network request), and the program hands it in. It copies game/ and
-// screenshots/ from beside this file to /output and writes /output/dossier.json, the summary the
-// judge reads, with the vendored make.fun library. Only the plumbing, not an open world: Block
-// Dodger, a plain 2D canvas game where a paddle dodges falling blocks and catches coins, with a
-// title screen, score, lives and levels, game over and restart, flat colours and no sound. Build
-// your own open-world crime game in its place (three.js or any library you vendor under game/),
-// put your 3 or 4 PNG or JPEG screenshots in screenshots/ (the first by name is the cover) and run it.
+// Neon Bay Nights — a gta6-01 entry (Node 24, standard library only): the game is this
+// directory's game/ folder, plain static files a desktop browser loads offline
+// (game/index.html and its ES modules, no library and no network request), and this
+// program hands it in. It copies game/ and screenshots/ from beside this file to
+// /output and writes /output/dossier.json, the summary the judge reads, with the
+// vendored make.fun library.
+//
+// The game is "Neon Bay Nights": a 2D top-down open-world crime game set in the fictional
+// sun-soaked coastal city of Neon Bay. Explore on foot and by car, steal cars, dodge the
+// police, work missions for the fixer Marla Voss, and earn cash. All original: own city,
+// names, story, art and sounds — nothing from any commercial game.
 //
 // Serve it locally with `node serve.ts`, then open http://localhost:8080.
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+
+// Fail fast with a clear error instead of handing in a broken entry: the game must
+// exist and at least one screenshot must be present (the gate wants 3 or 4).
+const gameIndex = join(here, 'game', 'index.html');
+if (!existsSync(gameIndex)) {
+  throw new Error(`Neon Bay Nights: ${gameIndex} is missing — the game was not built.`);
+}
+const shotsDir = join(here, 'screenshots');
+if (!existsSync(shotsDir)) {
+  throw new Error(`Neon Bay Nights: ${shotsDir} is missing — take the screenshots first.`);
+}
+// The gate wants 3 or 4 screenshots, each at most 256 KiB: refuse to hand in a set
+// the scorer would refuse, instead of discovering it after the fact.
+const shotFiles = readdirSync(shotsDir).filter((name) => !name.startsWith('.'));
+if (shotFiles.length < 3 || shotFiles.length > 4) {
+  throw new Error(`Neon Bay Nights: expected 3-4 screenshots, found ${shotFiles.length}.`);
+}
+for (const name of shotFiles) {
+  const size = statSync(join(shotsDir, name)).size;
+  if (size > 262144) throw new Error(`Neon Bay Nights: screenshot ${name} is ${size} bytes, over the 256 KiB cap.`);
+}
 
 mkdirSync(out, { recursive: true });
 cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
