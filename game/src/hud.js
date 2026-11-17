@@ -2,7 +2,7 @@
 // (what E does right now), the toast message, and the mute indicator. Drawing only — it
 // reads the world state and paints text and bars on the main canvas.
 
-import { CAR, FONT, PALETTE } from './config.js';
+import { CAR, FONT, PALETTE, STEAL_RADIUS } from './config.js';
 import { drawMinimap } from './minimap.js';
 
 const FIELD_W = 1280;
@@ -123,7 +123,7 @@ export function drawHud(ctx, state, fonts) {
   // other car in reach, the same way the steal itself prefers it.
   if (!p.car) {
     let nearest = null;
-    let bestD = 78;
+    let bestD = STEAL_RADIUS;
     if (state.targetCar && Math.hypot(p.x - state.targetCar.x, p.y - state.targetCar.y) < bestD) {
       nearest = state.targetCar;
     } else {

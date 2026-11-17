@@ -12,7 +12,7 @@
 
 import {
   BEACH, CAR, ENEMY, PALETTE, PARKED, PEDS, PISTOL, PLAYER, POLICE, ROAD_HALF, ROAD_X, ROAD_Y,
-  SPAWN, TRAFFIC, WANTED, WORLD,
+  SPAWN, STEAL_RADIUS, TRAFFIC, WANTED, WORLD,
 } from './config.js';
 import { createCity, hitsBuilding, lightState, nearestRoad, onRoad, resolveBuildingCollision } from './city.js';
 import { createMissionRunner, MISSION_DEFS } from './missions.js';
@@ -337,7 +337,7 @@ export function createWorld(random, save) {
     // junker they arrived in parked beside it.
     if (ctl.interact) {
       let best = null;
-      let bestD = 78;
+      let bestD = STEAL_RADIUS;
       if (state.targetCar && !state.targetCar.dead && dist(p.x, p.y, state.targetCar.x, state.targetCar.y) < bestD) {
         best = state.targetCar;
       } else {
@@ -389,19 +389,19 @@ export function createWorld(random, save) {
     car.angle += ctl.steer * CAR.turnRate * speedFactor * dt * (car.speed >= 0 ? 1 : -1);
     const oldX = car.x;
     const oldY = car.y;
-    const stepX = Math.cos(car.angle) * car.speed * dt;
-    const stepY = Math.sin(car.angle) * car.speed * dt;
-    // Move one axis at a time so the car slides along a building wall instead of
-    // stopping dead nose-first into it (a hard stop wedges the car and feels unfair).
-    car.x += stepX;
-    if (hitsBuilding(city, car.x, car.y, 18)) {
-      car.x = oldX;
-      wallHit(Math.abs(stepX) / dt);
-    }
-    car.y += stepY;
-    if (hitsBuilding(city, car.x, car.y, 18)) {
-      car.y = oldY;
-      wallHit(Math.abs(stepY) / dt);
+    car.x += Math.cos(car.angle) * car.speed * dt;
+    car.y += Math.sin(car.angle) * car.speed * dt;
+    // Slide along walls: move fully, then push the car out of any building along
+    // the shortest exit. The push-out cancels only the into-wall component, so the
+    // car glides along the wall (and around corners) instead of stopping dead
+    // nose-first into it — the old axis-by-axis revert wedged the car at speed 0
+    // on building corners, and every retry wedged it again.
+    const attempted = Math.abs(car.speed) * dt;
+    const hitBuilding = resolveBuildingCollision(city, car, 18);
+    if (hitBuilding) {
+      const moved = dist(car.x, car.y, oldX, oldY);
+      if (moved < attempted * 0.5) wallHit(Math.abs(car.speed));
+      else if (moved < attempted * 0.9) car.speed *= 0.9;
     }
     // A hard hit into a wall damages the car and shakes the camera; a gentle scrape
     // just slows it down. Damage is deliberately light: one bad corner must not end
@@ -779,6 +779,8 @@ export function createWorld(random, save) {
     }
     state.footCops = state.footCops.filter((c) => c.arrest !== -999);
     // A police car ramming the player on foot hurts — but never during spawn protection.
+    // The ram also bounces the cruiser back off, so it cannot sit on the player and
+    // ram again the moment the brief invulnerability wears off.
     if (!p.car && p.invulnerable <= 0) {
       for (const cop of state.policeCars) {
         if (dist(cop.x, cop.y, p.x, p.y) < 34 && Math.abs(cop.speed) > 80) {
@@ -788,6 +790,33 @@ export function createWorld(random, save) {
           p.x += Math.cos(angleTo(cop.x, cop.y, p.x, p.y)) * 30;
           p.y += Math.sin(angleTo(cop.x, cop.y, p.x, p.y)) * 30;
           resolveBuildingCollision(city, p, PLAYER.radius);
+          cop.speed = -120;
+          cop.bump = 1.5;
+        }
+      }
+    }
+    // A cruiser must never rest on top of the on-foot player: it hides them, pins
+    // them in place, and WASD barely moves them. Keep a minimum gap by pushing the
+    // cruiser out; if the cruiser cannot give way (a building behind it), push the
+    // player out instead.
+    if (!p.car) {
+      for (const cop of state.policeCars) {
+        const d = dist(cop.x, cop.y, p.x, p.y);
+        const minD = 42;
+        if (d < minD && d > 0.01) {
+          const nx = (cop.x - p.x) / d;
+          const ny = (cop.y - p.y) / d;
+          const ox = cop.x;
+          const oy = cop.y;
+          cop.x = p.x + nx * minD;
+          cop.y = p.y + ny * minD;
+          if (hitsBuilding(city, cop.x, cop.y, 18)) {
+            cop.x = ox;
+            cop.y = oy;
+            p.x = cop.x - nx * minD;
+            p.y = cop.y - ny * minD;
+            resolveBuildingCollision(city, p, PLAYER.radius);
+          }
         }
       }
     }

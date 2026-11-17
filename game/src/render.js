@@ -463,6 +463,18 @@ export function createRenderer(canvas) {
         text(b.title, VIEW_W / 2, 190, 40, b.color || PALETTE.gold, 'center');
         if (b.line) text(b.line, VIEW_W / 2, 228, 22, PALETTE.text, 'center');
       }
+      // Damage flash: a red edge vignette right after the player is hurt, so a hit
+      // is impossible to miss — the health bar alone is too quiet when a cruiser
+      // or a bullet takes a chunk out of the player.
+      const sinceHurt = state.time - state.lastHurt;
+      if (sinceHurt < 0.45) {
+        const a = 0.35 * (1 - sinceHurt / 0.45);
+        const grad = context.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.32, VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.75);
+        grad.addColorStop(0, 'rgba(239, 71, 111, 0)');
+        grad.addColorStop(1, `rgba(239, 71, 111, ${a})`);
+        context.fillStyle = grad;
+        context.fillRect(0, 0, VIEW_W, VIEW_H);
+      }
     } else if (screen === SCREEN_PAUSED) {
       drawHud(context, state, fonts);
       drawPanel('Paused', ['The city waits for you.', 'M — mute sound'], 'Press P to resume');

@@ -30,6 +30,11 @@ export const PLAYER = {
   punchCooldown: 0.35,
 };
 
+/** How close the player must be to a car for the steal prompt and the E steal:
+ * 120 px, so the prompt shows while the player is still walking up to a car
+ * instead of only when they are already on its door. */
+export const STEAL_RADIUS = 120;
+
 export const PISTOL = { ammo: 12, damage: 34, bulletSpeed: 900, fireCooldown: 0.28, range: 520 };
 
 export const CAR = {
@@ -66,7 +71,9 @@ export const POLICE = {
   carsPerStar: 1,
   maxCars: 3,
   chaseSpeed: 400,
-  ramDamage: 8,
+  /** One ram on foot takes 5 health, not 8: a cruiser that catches the player
+   * on foot must sting, not take a quarter of their health per bump. */
+  ramDamage: 5,
   /** Foot cops appear once the wanted level reaches this. */
   footCopsFrom: 2,
   arrestSeconds: 1.2,
