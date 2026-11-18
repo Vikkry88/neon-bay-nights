@@ -25,7 +25,7 @@
   function save(state) {
     try {
       const data = {
-        money: Math.floor(state.money || 0),
+        money: Math.floor(state.player ? state.player.money : state.money || 0),
         missionsDone: (state.missionsDone || []).slice(),
         bestWanted: state.bestWanted || 0,
       };

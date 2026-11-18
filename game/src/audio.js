@@ -119,7 +119,6 @@
     sirenGain.connect(master);
     sirenOsc.start();
     lfo.start();
-    NBN.audio._sirenLfo = lfo;
   }
 
   function setSiren(on) {
@@ -148,7 +147,6 @@
   }
 
   NBN.audio = {
-    _sirenLfo: null,
     unlock,
     ensure,
     startEngine,

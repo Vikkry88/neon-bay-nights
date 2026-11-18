@@ -1,9 +1,10 @@
 // Neon Bay Nights — entry program for the make.fun gta6-01 bounty.
 // Copies game/ and screenshots/ into the output directory and writes
-// /output/dossier.json from vendor/makefun-game.ts. Node 22 standard
-// library only; no network, no install. The scorer runs this program
-// twice and requires identical bytes both times, so the dossier is built
-// twice here and the run refuses to finish unless both agree.
+// /output/dossier.json using buildDossier from vendor/makefun-game.ts.
+// Node standard library only; no network, no install. The scorer runs
+// this program twice and requires identical bytes both times, so the
+// dossier is built twice here and the run refuses to finish unless both
+// builds agree byte for byte.
 
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -36,9 +37,8 @@ mkdirSync(outDir, { recursive: true });
 copyTree('game');
 copyTree('screenshots');
 
-// The dossier refuses screenshots past its cap, but a missing one is a
-// quieter failure — catch it here, before the build runs, so a bad
-// screenshot step fails loudly instead of handing in a thin entry.
+// A missing screenshot is a quiet failure in the dossier builder, so
+// catch a wrong count here, loudly, before the build runs.
 const shotFiles = readdirSync(join(outDir, 'screenshots')).filter((f) => /\.(png|jpe?g)$/i.test(f));
 if (shotFiles.length < 3 || shotFiles.length > 4) {
   throw new Error(`Neon Bay Nights: screenshots/ holds ${shotFiles.length} images, need 3 or 4`);
@@ -46,6 +46,22 @@ if (shotFiles.length < 3 || shotFiles.length > 4) {
 const entryPoint = join(process.cwd(), 'game', 'src', 'main.js');
 if (!existsSync(entryPoint) || !statSync(entryPoint).isFile()) {
   throw new Error('Neon Bay Nights: game/src/main.js is missing, the game loop has no home');
+}
+
+// Guard the dossier's game cap directly: the scorer rejects game/ over
+// 48 MiB, so fail here with a clear number instead of handing in a build
+// the dossier builder would silently trim.
+function dirBytes(dir: string): number {
+  let n = 0;
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name);
+    n += e.isDirectory() ? dirBytes(p) : statSync(p).size;
+  }
+  return n;
+}
+const gameBytes = dirBytes(join(process.cwd(), 'game'));
+if (gameBytes > 50331648) {
+  throw new Error(`Neon Bay Nights: game/ is ${gameBytes} bytes, over the 48 MiB cap`);
 }
 
 const caps = {
