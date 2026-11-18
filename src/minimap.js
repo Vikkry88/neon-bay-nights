@@ -1,0 +1,91 @@
+// Neon Bay Nights — minimap.js
+// One job: the live minimap — streets, beach, player, police, mission marker.
+(function () {
+  'use strict';
+
+  const NBN = window.NBN;
+  const CFG = NBN.CFG;
+
+  const SIZE = 190;
+  const SCALE = SIZE / CFG.WORLD;
+
+  function drawMinimap(ctx, vw, vh) {
+    const S = NBN.world.getState();
+    const M = NBN.missions.getState();
+    const x0 = vw - SIZE - 16;
+    const y0 = vh - SIZE - 16;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(x0 - 6, y0 - 6, SIZE + 12, SIZE + 12);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x0, y0, SIZE, SIZE);
+    ctx.clip();
+    // Land, beach, water.
+    ctx.fillStyle = '#3f6b34';
+    ctx.fillRect(x0, y0, SIZE, SIZE);
+    ctx.fillStyle = '#c9b078';
+    ctx.fillRect(x0 + CFG.BEACH_X * SCALE, y0, (CFG.WATER_X - CFG.BEACH_X) * SCALE, SIZE);
+    ctx.fillStyle = '#2e7fa8';
+    ctx.fillRect(x0 + CFG.WATER_X * SCALE, y0, SIZE - CFG.WATER_X * SCALE, SIZE);
+    // Streets.
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 2;
+    for (let k = 0; k <= CFG.WORLD / CFG.GRID; k++) {
+      const c = k * CFG.GRID * SCALE;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0 + c);
+      ctx.lineTo(x0 + SIZE, y0 + c);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x0 + c, y0);
+      ctx.lineTo(x0 + c, y0 + SIZE);
+      ctx.stroke();
+    }
+    // Buildings as faint blocks.
+    ctx.fillStyle = 'rgba(220,220,220,0.35)';
+    for (const b of NBN.city.buildings) {
+      ctx.fillRect(x0 + b.x * SCALE, y0 + b.y * SCALE, Math.max(1, b.w * SCALE), Math.max(1, b.h * SCALE));
+    }
+    // Mission marker.
+    if (M.active && M.active.target) {
+      const t = M.active.target;
+      ctx.fillStyle = '#ff2e88';
+      ctx.beginPath();
+      ctx.arc(x0 + t.x * SCALE, y0 + t.y * SCALE, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    // Police as blue dots.
+    ctx.fillStyle = '#2e7bff';
+    for (const c of S.cars) {
+      if (c.kind !== 'police') continue;
+      ctx.beginPath();
+      ctx.arc(x0 + c.x * SCALE, y0 + c.y * SCALE, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Player: white arrow.
+    const p = S.player;
+    ctx.save();
+    ctx.translate(x0 + p.x * SCALE, y0 + p.y * SCALE);
+    ctx.rotate(p.angle);
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.moveTo(7, 0);
+    ctx.lineTo(-5, -5);
+    ctx.lineTo(-5, 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    ctx.restore();
+    // Frame label.
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('NEON BAY', x0, y0 - 10);
+  }
+
+  NBN.minimap = { drawMinimap };
+})();
