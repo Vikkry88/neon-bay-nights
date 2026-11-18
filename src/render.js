@@ -388,11 +388,17 @@
     // Cars, sorted so the player's car draws last.
     const cars = S.cars.slice().sort((a, b) => (a.kind === 'player' ? 1 : 0) - (b.kind === 'player' ? 1 : 0));
     for (const c of cars) drawCar(ctx, c);
-    // Bullets.
-    ctx.fillStyle = '#ffe14d';
+    // Bullets: bright tracer line + dot, so a shot is unmistakable.
+    ctx.strokeStyle = '#ffe14d';
+    ctx.lineWidth = 3;
+    ctx.fillStyle = '#fff3b0';
     for (const b of S.bullets) {
       ctx.beginPath();
-      ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
+      ctx.moveTo(b.x - b.vx * 0.02, b.y - b.vy * 0.02);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
       ctx.fill();
     }
     // Particles.

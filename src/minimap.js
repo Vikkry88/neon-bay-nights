@@ -66,6 +66,14 @@
       ctx.arc(x0 + c.x * SCALE, y0 + c.y * SCALE, 3.5, 0, Math.PI * 2);
       ctx.fill();
     }
+    // Traffic as pale dots so the player can spot a car to steal.
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    for (const c of S.cars) {
+      if (c.kind !== 'traffic') continue;
+      ctx.beginPath();
+      ctx.arc(x0 + c.x * SCALE, y0 + c.y * SCALE, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
     // Player: white arrow.
     const p = S.player;
     ctx.save();
