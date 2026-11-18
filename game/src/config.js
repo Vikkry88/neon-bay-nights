@@ -25,9 +25,17 @@
     CAR_REVERSE_MAX: 150,
     CAR_TURN: 2.9,
     STEAL_RADIUS: 120, // generous steal prompt radius
+    ENTER_COOLDOWN: 0.7, // seconds after stealing/exiting before E works again
+    TRAFFIC_MAX: 28, // traffic cars alive at once (the world is 3200x3200)
+    TRAFFIC_TOPUP: 1.5, // per-second chance to replace a missing traffic car
+    PARKED_CARS: 14, // parked cars to steal, plus the mission-4 coupe
     // Combat / damage (capped so one hit can never gut the player)
     TRAFFIC_HIT_DAMAGE: 4,
-    RAM_DAMAGE: 6,
+    RAM_CAR_DAMAGE: 1, // car condition lost per ram (rams hurt the CAR, not the driver)
+    RAM_COOLDOWN: 2.0, // seconds before one cruiser may ram again
+    RAM_GATE_SECONDS: 1.5, // one ram per 1.5s across ALL cruisers
+    RAM_BACKOFF_SECONDS: 1.6, // a cruiser reverses away this long after ramming
+    RAM_HOLD_DIST: 80, // cruisers that may not ram yet hold at this distance
     BULLET_DAMAGE: 8,
     PUNCH_DAMAGE: 12,
     HIT_COOLDOWN: 0.7, // seconds between damage ticks from one source
@@ -90,9 +98,9 @@
   // Key places in the city (world coordinates).
   NBN.PLACES = {
     spawnPark: { x: 600, y: 1000 }, // safe spawn: a park, away from traffic
-    garage: { x: 1400, y: 600 },
+    garage: { x: 1200, y: 600 }, // on the x=1200 street: the old spot sat inside a building
     saltAirBar: { x: 2960, y: 1600 },
-    safehouse: { x: 600, y: 2600 },
+    safehouse: { x: 600, y: 2400 }, // on the y=2400 street: the old spot sat inside a building
     vault: { x: 1600, y: 1400 },
     ricoPickup: { x: 2200, y: 2200 },
     coupeLot: { x: 1000, y: 2000 },

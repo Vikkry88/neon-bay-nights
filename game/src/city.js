@@ -80,7 +80,7 @@
     // Traffic lights at every other intersection, offset phases.
     for (let cx = 1; cx < cols; cx++) {
       for (let cy = 1; cy < cols; cy++) {
-        if ((cx + cy) % 2 === 0) lights.push({ x: cx * GRID, y: cy * GRID, phase: (cx * 7 + cy * 3) % 10 });
+        if ((cx + cy) % 2 === 0) lights.push({ x: cx * GRID, y: cy * GRID, phase: (cx * 7 + cy * 3) % 6 });
       }
     }
     // Street lamps along the beach boardwalk.
@@ -130,10 +130,11 @@
   }
 
   // Traffic light state at an intersection: true = green for east-west.
+  // Short 6s cycle (3s each way) so no one waits long at a red light.
   function lightGreen(light, t) {
-    const cycle = 10;
+    const cycle = 6;
     const phase = (t + light.phase) % cycle;
-    return phase < 5;
+    return phase < 3;
   }
 
   NBN.city = {

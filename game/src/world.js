@@ -8,7 +8,7 @@
   const CFG = NBN.CFG;
 
   const CAR_COLORS = ['#d94f3d', '#3d7ad9', '#e8c33d', '#7a3dd9', '#3dd9a0', '#d9d9d9', '#2e2e38', '#e07a2e'];
-  const MAX_TRAFFIC = 14;
+  const MAX_TRAFFIC = CFG.TRAFFIC_MAX;
   const MAX_PEDS = 22;
 
   let S = null; // world state
@@ -17,6 +17,7 @@
     return {
       x, y, angle, speed: 0, kind, color: color || NBN.pick(CAR_COLORS),
       health: 100, dir: 0, street: 0, turnAt: 0, stopped: false, ramCd: 0, crashCd: 0,
+      backoff: 0, stuckT: 0,
       siren: kind === 'police', ai: kind === 'traffic' || kind === 'police',
     };
   }
@@ -29,7 +30,7 @@
         x: p.x, y: p.y, angle: -Math.PI / 2, speed: 0,
         health: CFG.PLAYER_HEALTH, money: save ? save.money : 0,
         wanted: 0, inCar: null, invuln: CFG.SPAWN_INVULN_SECONDS,
-        ammo: 0, hasPistol: false, punchCd: 0, lastHit: {},
+        ammo: 0, hasPistol: false, punchCd: 0, carCd: 0, lastHit: {},
         quietTime: 0, lastCrime: -99, sprinting: false,
       },
       cars: [],
@@ -41,6 +42,7 @@
       floats: [], // floating text {x,y,txt,life,color}
       flash: 0, // red damage vignette 0..1
       shake: 0,
+      ramGate: -99, // time of the last police ram (any cruiser): one ram per gate
       missionsDone: save ? save.missionsDone.slice() : [],
       bestWanted: save ? save.bestWanted : 0,
       over: null, // 'wasted' | 'busted' | null
@@ -52,9 +54,14 @@
 
   function init(save) {
     S = newState(save);
-    // Parked cars around the city, plus a few near spawn.
-    for (let i = 0; i < 9; i++) {
+    // Parked cars around the city, plus two near spawn so the first steal
+    // (mission 1) is a short walk, not a blind hunt across the city.
+    for (let i = 0; i < CFG.PARKED_CARS; i++) {
       const spot = randomRoadSpot();
+      S.cars.push(makeCar(spot.x, spot.y, spot.angle, 'parked'));
+    }
+    for (let i = 0; i < 2; i++) {
+      const spot = nearSpawnSpot();
       S.cars.push(makeCar(spot.x, spot.y, spot.angle, 'parked'));
     }
     // The marked yellow coupe for mission 4, parked in its lot.
@@ -80,8 +87,28 @@
     return { x: 1200, y: 1200, angle: 0 };
   }
 
+  // A road spot close to the spawn park (for the two starter parked cars).
+  function nearSpawnSpot() {
+    const p = NBN.PLACES.spawnPark;
+    for (let tries = 0; tries < 30; tries++) {
+      const spot = randomRoadSpot();
+      if (NBN.dist(spot.x, spot.y, p.x, p.y) < 650) return spot;
+    }
+    return { x: 420, y: 1000, angle: 0 };
+  }
+
   function spawnTrafficCar(anywhere) {
-    const spot = randomRoadSpot();
+    // Replacement cars spawn near the player (550–1100px away) so the streets
+    // around them stay busy; the initial batch may spawn anywhere.
+    let spot = randomRoadSpot();
+    if (!anywhere) {
+      for (let tries = 0; tries < 12; tries++) {
+        const cand = randomRoadSpot();
+        const d = NBN.dist(cand.x, cand.y, S.player.x, S.player.y);
+        spot = cand;
+        if (d > 550 && d < 1100) break;
+      }
+    }
     const c = makeCar(spot.x, spot.y, spot.angle, 'traffic');
     // Align to a street lane and pick a heading.
     const gx = Math.round(c.x / CFG.GRID) * CFG.GRID;
@@ -227,7 +254,9 @@
 
   function shoot() {
     const p = S.player;
-    if (p.inCar || !p.hasPistol || p.ammo <= 0 || S.over) return;
+    // punchCd is the fire-rate gate: one shot per 0.28s, whether the trigger
+    // is a Space press or a held mouse button.
+    if (p.inCar || !p.hasPistol || p.ammo <= 0 || p.punchCd > 0 || S.over) return;
     p.ammo--;
     p.punchCd = 0.28;
     NBN.audio.gunshot();
@@ -237,6 +266,8 @@
       x: p.x + Math.cos(a) * 22, y: p.y + Math.sin(a) * 22,
       vx: Math.cos(a) * 640, vy: Math.sin(a) * 640, life: 0.9, from: 'player',
     });
+    // Muzzle flash at the gun tip so the shot is unmistakable.
+    spawnBurst(p.x + Math.cos(a) * 26, p.y + Math.sin(a) * 26, '#ffe14d', 4);
     S.shake = Math.max(S.shake, 2);
   }
 
@@ -336,6 +367,41 @@
       const i = S.cars.indexOf(c);
       if (i >= 0) S.cars.splice(i, 1);
       spawnTrafficCar(false);
+      return;
+    }
+    // Stuck recovery: a car that has not moved for 8 seconds is in a jam that
+    // will never clear (deadlocked queue, abandoned player car, bad light) —
+    // respawn it on a fresh street instead of sitting there for minutes.
+    if (c.speed < 5) c.stuckT += dt;
+    else c.stuckT = 0;
+    if (c.stuckT > 8) {
+      const i = S.cars.indexOf(c);
+      if (i >= 0) S.cars.splice(i, 1);
+      spawnTrafficCar(false);
+    }
+  }
+
+  // Push overlapping traffic cars apart so two cars can never sit inside each
+  // other at an intersection after a turn.
+  function separateTraffic() {
+    const list = S.cars.filter((c) => c.kind === 'traffic');
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const a = list[i];
+        const b = list[j];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const d = Math.hypot(dx, dy);
+        if (d > 0.01 && d < 44) {
+          const push = (44 - d) / 2;
+          const ux = dx / d;
+          const uy = dy / d;
+          a.x -= ux * push;
+          a.y -= uy * push;
+          b.x += ux * push;
+          b.y += uy * push;
+        }
+      }
     }
   }
 
@@ -371,9 +437,27 @@
       c.speed = Math.max(0, c.speed - 300 * dt);
       return;
     }
+    // Backing off after a ram: reverse away from the player, no chase, no ram.
+    // This is what stops a cruiser pinning the player's car after it hits.
+    if (c.backoff > 0) {
+      c.backoff -= dt;
+      c.speed = NBN.lerp(c.speed, -150, Math.min(1, dt * 3));
+      const bx = c.x + Math.cos(c.angle) * c.speed * dt;
+      const by = c.y + Math.sin(c.angle) * c.speed * dt;
+      if (!NBN.city.hitBuilding(bx, c.y, 20)) c.x = bx;
+      if (!NBN.city.hitBuilding(c.x, by, 20)) c.y = by;
+      return;
+    }
+    if (c.ramCd > 0) c.ramCd -= dt;
+    // One ram at a time, across ALL cruisers: this cruiser may ram only when
+    // its own cooldown is up AND no cruiser has rammed in the last gate window.
+    const ramReady = c.ramCd <= 0 && (S.time - S.ramGate) >= CFG.RAM_GATE_SECONDS;
     const diff = NBN.angleDiff(c.angle, wantAngle);
     c.angle += NBN.clamp(diff, -2.4 * dt, 2.4 * dt);
-    const target = d > 260 ? 330 : d > 90 ? 260 : 120;
+    // A cruiser that may not ram yet holds at a distance instead of pushing
+    // into the player's car — so two cruisers can never pin it at once.
+    const target = (p.inCar && d < CFG.RAM_HOLD_DIST && !ramReady) ? 0
+      : d > 260 ? 330 : d > 90 ? 260 : 120;
     c.speed = NBN.lerp(c.speed, target, Math.min(1, dt * 1.5));
     const nx = c.x + Math.cos(c.angle) * c.speed * dt;
     const ny = c.y + Math.sin(c.angle) * c.speed * dt;
@@ -381,17 +465,19 @@
     const r = 20;
     if (!NBN.city.hitBuilding(nx, c.y, r)) c.x = nx;
     if (!NBN.city.hitBuilding(c.x, ny, r)) c.y = ny;
-    // Ram the player's car (damage capped by damagePlayer's cooldown, and
-    // rate-limited per cruiser so three cars cannot shred it in one second).
-    if (c.ramCd > 0) c.ramCd -= dt;
-    if (p.inCar && d < 52 && c.ramCd <= 0) {
-      c.ramCd = 0.8;
-      damagePlayer(CFG.RAM_DAMAGE, 'ram');
+    // Ram the player's car: a shove, not a shredder. One ram per gate across
+    // all cruisers, then this cruiser backs off instead of chain-ramming.
+    // A ram hurts the CAR only — the driver is shielded inside it. The car
+    // is the stakes: lose it and you are on foot with the whole Bay PD.
+    if (p.inCar && d < 52 && ramReady) {
+      S.ramGate = S.time;
+      c.ramCd = CFG.RAM_COOLDOWN;
+      c.backoff = CFG.RAM_BACKOFF_SECONDS;
       const car = p.inCar;
-      car.health = Math.max(0, car.health - 3);
+      car.health = Math.max(0, car.health - CFG.RAM_CAR_DAMAGE);
       spawnBurst(car.x, car.y, '#ffe14d', 5);
       if (car.health <= 0) explodeCar(car);
-      c.speed *= 0.5;
+      c.speed = -150;
     }
     // Foot cop steps out when the player is on foot and wanted is high.
     if (!p.inCar && S.player.wanted >= 2 && d < 200 && S.cops.length < S.player.wanted && NBN.rng() < dt * 0.5) {
@@ -468,6 +554,7 @@
     const inp = NBN.input;
     if (p.invuln > 0) p.invuln -= dt;
     if (p.punchCd > 0) p.punchCd -= dt;
+    if (p.carCd > 0) p.carCd -= dt;
     if (S.over) return;
 
     // Mouse aim on foot.
@@ -478,14 +565,23 @@
       if (NBN.dist(p.x, p.y, wx, wy) > 20) p.angle = NBN.angleTo(p.x, p.y, wx, wy);
     }
 
-    if (inp.hit('KeyE')) {
-      if (p.inCar) exitCar();
-      else if (stealCar()) { /* stolen */ }
+    // E is NOT a toggle: after stealing or exiting, E is dead for a beat so a
+    // quick double-press cannot steal and then instantly throw you back out.
+    if (inp.hit('KeyE') && p.carCd <= 0) {
+      if (p.inCar) {
+        exitCar();
+        p.carCd = CFG.ENTER_COOLDOWN;
+      } else if (stealCar()) {
+        p.carCd = CFG.ENTER_COOLDOWN;
+      }
     }
     if (inp.hit('Space')) {
       if (p.hasPistol && p.ammo > 0) shoot();
       else punch();
     }
+    // Mouse click shoots too (hold to keep firing, rate-limited by punchCd) —
+    // the pistol aims at the mouse on foot, so a click must do something.
+    if (NBN.input.mouse.down && !p.inCar && p.hasPistol) shoot();
 
     if (p.inCar) {
       const car = p.inCar;
@@ -522,7 +618,9 @@
       // rate-limited so one overlap cannot shred a car in a few frames.
       if (car.crashCd > 0) car.crashCd -= dt;
       for (const o of S.cars) {
-        if (o === car || o.kind === 'parked') continue;
+        // Police contact is the ram logic's job, not a crash: reversing into a
+        // cruiser that is already ramming you must not shred your car.
+        if (o === car || o.kind === 'parked' || o.kind === 'police') continue;
         if (car.crashCd <= 0 && NBN.dist(car.x, car.y, o.x, o.y) < 44 && Math.abs(car.speed) > 120) {
           car.crashCd = 0.8;
           damagePlayer(CFG.TRAFFIC_HIT_DAMAGE, 'crash');
@@ -667,8 +765,9 @@
 
     // Traffic / ped top-up.
     const trafficN = S.cars.filter((c) => c.kind === 'traffic').length;
-    if (trafficN < MAX_TRAFFIC && NBN.rng() < dt * 0.5) spawnTrafficCar(false);
+    if (trafficN < MAX_TRAFFIC && NBN.rng() < dt * CFG.TRAFFIC_TOPUP) spawnTrafficCar(false);
     if (S.peds.length < MAX_PEDS && NBN.rng() < dt * 0.5) spawnPed(false);
+    separateTraffic();
 
     for (let i = S.particles.length - 1; i >= 0; i--) {
       const pt = S.particles[i];
