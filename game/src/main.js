@@ -60,6 +60,8 @@
       camera.x = S.player.x;
       camera.y = S.player.y;
     }
+    // Signal to headless harnesses that the game has started and the
+    // first playing frame is about to render.
     window.__NBN_READY__ = true;
   }
 
