@@ -172,19 +172,32 @@
     }
   }
 
+  // Clamp a world-space label rect into the safe screen area (below the top
+  // HUD, above the minimap, inside the viewport) and return the clamped
+  // world top-left. Labels near a viewport edge used to slide under the
+  // HEALTH panel or the minimap.
+  function clampLabelRect(wx, wy, w, h, cam, vw, vh) {
+    let sx = wx - cam.x + vw / 2;
+    let sy = wy - cam.y + vh / 2;
+    sx = NBN.clamp(sx, 8, vw - w - 8);
+    sy = NBN.clamp(sy, 124, vh - 250);
+    return { x: sx + cam.x - vw / 2, y: sy + cam.y - vh / 2 };
+  }
+
   // A label with a solid dark backing, drawn BELOW its anchor so it never
   // stacks on the mission beacon label above or the car health bar.
-  function placeLabel(ctx, x, y, text, color) {
+  function placeLabel(ctx, x, y, text, color, cam, vw, vh) {
     ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'center';
     const w = ctx.measureText(text).width + 18;
+    const at = clampLabelRect(x - w / 2, y + 52, w, 22, cam, vw, vh);
     ctx.fillStyle = 'rgba(0,0,0,0.75)';
-    ctx.fillRect(x - w / 2, y + 52, w, 22);
+    ctx.fillRect(at.x, at.y, w, 22);
     ctx.fillStyle = color;
-    ctx.fillText(text, x, y + 68);
+    ctx.fillText(text, at.x + w / 2, at.y + 16);
   }
 
-  function drawPlaces(ctx) {
+  function drawPlaces(ctx, cam, vw, vh) {
     const P = NBN.PLACES;
     const M = NBN.missions.getState();
     const S = NBN.world.getState();
@@ -194,11 +207,11 @@
     ctx.setLineDash([10, 8]);
     ctx.strokeRect(P.garage.x - 55, P.garage.y - 45, 110, 90);
     ctx.setLineDash([]);
-    placeLabel(ctx, P.garage.x, P.garage.y, 'GARAGE', '#ffe14d');
+    placeLabel(ctx, P.garage.x, P.garage.y, 'GARAGE', '#ffe14d', cam, vw, vh);
     // Safehouse.
     ctx.strokeStyle = '#7CFF6B';
     ctx.strokeRect(P.safehouse.x - 45, P.safehouse.y - 45, 90, 90);
-    placeLabel(ctx, P.safehouse.x, P.safehouse.y, 'SAFEHOUSE', '#7CFF6B');
+    placeLabel(ctx, P.safehouse.x, P.safehouse.y, 'SAFEHOUSE', '#7CFF6B', cam, vw, vh);
     // Salt Air bar on the beach.
     ctx.fillStyle = '#c96a3b';
     ctx.fillRect(P.saltAirBar.x - 40, P.saltAirBar.y - 26, 80, 52);
@@ -234,18 +247,22 @@
       ctx.fillStyle = '#ffe14d';
       ctx.font = 'bold 12px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('PISTOL', P.pistolPickup.x, P.pistolPickup.y - 34 + bob);
+      const pw = ctx.measureText('PISTOL').width + 18;
+      const pat = clampLabelRect(P.pistolPickup.x - pw / 2, P.pistolPickup.y - 34 + bob - 13, pw, 16, cam, vw, vh);
+      ctx.fillText('PISTOL', pat.x + pw / 2, pat.y + 13);
     }
-    // Mission target beacon.
+    // Mission target beacon, in the target's own colour (the garage ring is
+    // yellow because the job says "yellow garage marker").
     if (M.active && M.active.target) {
       const t = M.active.target;
+      const bc = t.color || '#ff2e88';
       const pulse = 1 + Math.sin(S.time * 4) * 0.12;
-      ctx.strokeStyle = '#ff2e88';
+      ctx.strokeStyle = bc;
       ctx.lineWidth = 4;
       ctx.beginPath();
       ctx.arc(t.x, t.y, 34 * pulse, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.fillStyle = '#ff2e88';
+      ctx.fillStyle = bc;
       ctx.beginPath();
       ctx.moveTo(t.x, t.y - 52);
       ctx.lineTo(t.x - 10, t.y - 30);
@@ -255,10 +272,11 @@
       ctx.font = 'bold 13px sans-serif';
       ctx.textAlign = 'center';
       const w = ctx.measureText(M.active.target.label.toUpperCase()).width + 18;
+      const bat = clampLabelRect(t.x - w / 2, t.y - 78, w, 22, cam, vw, vh);
       ctx.fillStyle = 'rgba(0,0,0,0.75)';
-      ctx.fillRect(t.x - w / 2, t.y - 78, w, 22);
-      ctx.fillStyle = '#ff2e88';
-      ctx.fillText(M.active.target.label.toUpperCase(), t.x, t.y - 62);
+      ctx.fillRect(bat.x, bat.y, w, 22);
+      ctx.fillStyle = bc;
+      ctx.fillText(M.active.target.label.toUpperCase(), bat.x + w / 2, bat.y + 16);
     }
   }
 
@@ -323,6 +341,20 @@
     ctx.lineTo(CFG.CAR_LENGTH / 2 - 16, 6);
     ctx.closePath();
     ctx.fill();
+    // The player's car gets an explicit forward arrow at the nose, so the
+    // facing is readable at a glance even in a still frame.
+    if (c.kind === 'player') {
+      ctx.fillStyle = '#ffe14d';
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(CFG.CAR_LENGTH / 2 + 26, 0);
+      ctx.lineTo(CFG.CAR_LENGTH / 2 + 4, -9);
+      ctx.lineTo(CFG.CAR_LENGTH / 2 + 4, 9);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
     // Headlights / taillights.
     ctx.fillStyle = '#fff8c0';
     ctx.fillRect(CFG.CAR_LENGTH / 2 - 3, -CFG.CAR_WIDTH / 2 + 3, 3, 5);
@@ -415,7 +447,7 @@
     const S = NBN.world.getState();
     drawGround(ctx, cam, vw, vh);
     drawParksAndTrees(ctx, cam, vw, vh);
-    drawPlaces(ctx);
+    drawPlaces(ctx, cam, vw, vh);
     drawBuildings(ctx, cam, vw, vh);
     // Rico marker (mission 3, stage 0).
     const M = NBN.missions.getState();
@@ -464,18 +496,36 @@
     // Cars, sorted so the player's car draws last.
     const cars = S.cars.slice().sort((a, b) => (a.kind === 'player' ? 1 : 0) - (b.kind === 'player' ? 1 : 0));
     for (const c of cars) drawCar(ctx, c);
-    // Bullets: bright tracer line + dot, so a shot is unmistakable.
+    // Bullets: a long bright tracer line + a big dot, so a shot is
+    // unmistakable even in a still screenshot (the old 13px trail vanished
+    // between frames).
     ctx.strokeStyle = '#ffe14d';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 4;
     ctx.fillStyle = '#fff3b0';
     for (const b of S.bullets) {
       ctx.beginPath();
-      ctx.moveTo(b.x - b.vx * 0.02, b.y - b.vy * 0.02);
+      ctx.moveTo(b.x - b.vx * 0.06, b.y - b.vy * 0.06);
       ctx.lineTo(b.x, b.y);
       ctx.stroke();
       ctx.beginPath();
-      ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
+      ctx.arc(b.x, b.y, 5.5, 0, Math.PI * 2);
       ctx.fill();
+    }
+    // Muzzle flash: a bright star that lingers a quarter of a second after
+    // the shot, so the shot is visible even in a still screenshot.
+    if (S.muzzle) {
+      const a = Math.max(0, S.muzzle.t / 0.25);
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.fillStyle = '#ffe14d';
+      ctx.beginPath();
+      ctx.arc(S.muzzle.x, S.muzzle.y, 13, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(S.muzzle.x, S.muzzle.y, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
     // Particles.
     for (const pt of S.particles) {

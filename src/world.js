@@ -6,12 +6,23 @@
 // - Police rams are RARE and gentle: one ram per 3.5s across all cruisers,
 //   only on a moving car, small car-only damage, then the cruiser backs off
 //   and holds its distance. No continuous contact damage of any kind — a
-//   cruiser is never allowed inside 46px of the player's car, and a cruiser
-//   that cannot ram yet HOLDS at 130px instead of pushing in.
+//   cruiser is never allowed inside 72px of the player's car (46px was
+//   touching: the car is 46 long), and a cruiser that cannot ram yet
+//   RETREATS to the 130px hold ring instead of sitting on the bumper.
 // - Traffic cannot jam: a car that makes no progress for 5s respawns, a car
 //   blocked by a stopped car for 3s turns around, and no traffic ever
 //   spawns or wanders into a mission target circle.
 // - Steering works at walking pace: the turn rate floor is 60% of full.
+//
+// Round 4, from the third browser playtest: the car could wedge itself on
+// a building corner and never escape — the wall hit bled its speed to zero
+// twice a frame, and its heading kept pointing into the wall. So the wall
+// check uses a tighter radius, a wall grind only bleeds speed down to a
+// crawl (never to zero), and a car that ends up inside a building's margin
+// is shoved back out to the street (resolveBuildingOverlap) so it slides
+// along the wall instead of sitting in the corner's shadow. Cruisers get
+// the same treatment: a cruiser that makes no progress reverses out and
+// re-aims, so the chase can actually reach the player.
 (function () {
   'use strict';
 
@@ -58,6 +69,7 @@
       bestWanted: save ? save.bestWanted : 0,
       over: null, // 'wasted' | 'busted' | null
       pistolTaken: false,
+      muzzle: null, // {x, y, t} — bright muzzle flash, drawn while t > 0
       message: '',
       messageT: 0,
     };
@@ -175,6 +187,66 @@
         return;
       }
     }
+  }
+
+  // Push a car out of a building's collision margin: if the car's centre
+  // ends up inside the margin (it drove into a corner pocket between two
+  // buildings), shove it back out to the street along the shortest way out.
+  // Without this, a car grinding a building face at an angle wedges in the
+  // corner's shadow and can never move again — the wall check blocks both
+  // axes at once, and no amount of steering frees it.
+  function resolveBuildingOverlap(car, r) {
+    for (let i = 0; i < 3; i++) {
+      const b = NBN.city.hitBuilding(car.x, car.y, r);
+      if (!b) return;
+      const cx = NBN.clamp(car.x, b.x, b.x + b.w);
+      const cy = NBN.clamp(car.y, b.y, b.y + b.h);
+      const dx = car.x - cx, dy = car.y - cy;
+      const d = Math.hypot(dx, dy);
+      if (d < 0.01) {
+        // Centre inside the building: out along the smallest penetration.
+        const left = car.x - b.x, right = b.x + b.w - car.x;
+        const top = car.y - b.y, bottom = b.y + b.h - car.y;
+        const m = Math.min(left, right, top, bottom);
+        if (m === left) car.x = b.x - r;
+        else if (m === right) car.x = b.x + b.w + r;
+        else if (m === top) car.y = b.y - r;
+        else car.y = b.y + b.h + r;
+        continue;
+      }
+      if (d >= r) return;
+      const push = r - d;
+      car.x += (dx / d) * push;
+      car.y += (dy / d) * push;
+    }
+  }
+
+  // Escape a corner pocket: a car's centre can sit just OUTSIDE a
+  // building's margin while every move it can make enters the margin — the
+  // wall check then blocks both axes at once and no steering frees it.
+  // Nudge the car a few pixels toward the most open direction (measured
+  // 30px out) so it has room to drive on. Only fires when fully wedged.
+  function escapePocket(e, r) {
+    const clearance = (a, dist) => {
+      const px = e.x + Math.cos(a) * dist;
+      const py = e.y + Math.sin(a) * dist;
+      let best = 1e9;
+      for (const b of NBN.city.buildings) {
+        const cx = NBN.clamp(px, b.x, b.x + b.w);
+        const cy = NBN.clamp(py, b.y, b.y + b.h);
+        best = Math.min(best, Math.hypot(px - cx, py - cy));
+      }
+      return best;
+    };
+    const dirs = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+    let best = null, bestClear = -1;
+    for (const dd of dirs) {
+      const cl = clearance(dd, 30);
+      if (cl > bestClear) { bestClear = cl; best = dd; }
+    }
+    if (best === null || bestClear <= r + 2) return;
+    e.x += Math.cos(best) * 8;
+    e.y += Math.sin(best) * 8;
   }
 
   // ---------------------------------------------------------------- player
@@ -297,8 +369,10 @@
       x: p.x + Math.cos(a) * 22, y: p.y + Math.sin(a) * 22,
       vx: Math.cos(a) * 640, vy: Math.sin(a) * 640, life: 0.9, from: 'player',
     });
-    // Muzzle flash at the gun tip so the shot is unmistakable.
-    spawnBurst(p.x + Math.cos(a) * 26, p.y + Math.sin(a) * 26, '#ffe14d', 4);
+    // Muzzle flash at the gun tip so the shot is unmistakable — a bright
+    // star that lingers a quarter of a second, so it shows in a still shot.
+    spawnBurst(p.x + Math.cos(a) * 26, p.y + Math.sin(a) * 26, '#ffe14d', 8);
+    S.muzzle = { x: p.x + Math.cos(a) * 30, y: p.y + Math.sin(a) * 30, t: 0.25 };
     S.shake = Math.max(S.shake, 2);
   }
 
@@ -489,6 +563,25 @@
     NBN.audio.sirenBlip();
   }
 
+  // Push a cruiser out to the standoff ring — the CRUISER moves, never the
+  // player. And never park it in the player's driving lane: if the radial
+  // direction is near the player's forward heading, swing the push to the
+  // side so the cruiser ends up beside the car, not in front of its nose.
+  function pushCruiserOut(c) {
+    const p = S.player;
+    let push = NBN.angleTo(p.x, p.y, c.x, c.y);
+    if (p.inCar) {
+      const rel = Math.abs(NBN.angleDiff(p.inCar.angle, push));
+      if (rel < 0.7) {
+        const side = NBN.angleDiff(p.inCar.angle, push) >= 0 ? 1 : -1;
+        push = p.inCar.angle + side * 1.4; // ~80° off the nose, to the side
+      }
+    }
+    c.x = p.x + Math.cos(push) * CFG.POLICE_SEPARATION;
+    c.y = p.y + Math.sin(push) * CFG.POLICE_SEPARATION;
+    c.speed = 0;
+  }
+
   function updatePoliceCar(c, dt) {
     const p = S.player;
     const d = NBN.dist(c.x, c.y, p.x, p.y);
@@ -501,13 +594,10 @@
       c.speed = Math.max(0, c.speed - 300 * dt);
       return;
     }
-    // And never inside the player's car either: push the CRUISER out, never
-    // the player — a cruiser glued to the bumper is what ground cars down.
+    // Hard standoff, checked every frame before anything else: a cruiser
+    // inside the ring is pushed out to the side, never into the player.
     if (p.inCar && d < CFG.POLICE_SEPARATION) {
-      const push = NBN.angleTo(p.x, p.y, c.x, c.y);
-      c.x = p.x + Math.cos(push) * CFG.POLICE_SEPARATION;
-      c.y = p.y + Math.sin(push) * CFG.POLICE_SEPARATION;
-      c.speed = 0;
+      pushCruiserOut(c);
       return;
     }
     // Backing off after a ram: reverse away from the player, no chase, no ram.
@@ -518,14 +608,25 @@
       const by = c.y + Math.sin(c.angle) * c.speed * dt;
       if (!NBN.city.hitBuilding(bx, c.y, 20)) c.x = bx;
       if (!NBN.city.hitBuilding(c.x, by, 20)) c.y = by;
+      resolveBuildingOverlap(c, 16);
       return;
     }
     // Holding after the backoff: sit at a distance, lights flashing, while
     // the other cruisers take their turn. This is what stops two cruisers
-    // pinning one car at once.
+    // pinning one car at once. If the hold finds the cruiser too close, it
+    // keeps backing away instead of sitting on the bumper.
     if (c.holdT > 0) {
       c.holdT -= dt;
-      c.speed = NBN.lerp(c.speed, 0, Math.min(1, dt * 3));
+      if (d < CFG.RAM_HOLD_DIST) {
+        c.speed = NBN.lerp(c.speed, -140, Math.min(1, dt * 3));
+        const bx = c.x + Math.cos(c.angle) * c.speed * dt;
+        const by = c.y + Math.sin(c.angle) * c.speed * dt;
+        if (!NBN.city.hitBuilding(bx, c.y, 20)) c.x = bx;
+        if (!NBN.city.hitBuilding(c.x, by, 20)) c.y = by;
+        resolveBuildingOverlap(c, 16);
+      } else {
+        c.speed = NBN.lerp(c.speed, 0, Math.min(1, dt * 3));
+      }
       const diff = NBN.angleDiff(c.angle, wantAngle);
       c.angle += NBN.clamp(diff, -2.4 * dt, 2.4 * dt);
       return;
@@ -539,27 +640,53 @@
     const ramReady = c.ramCd <= 0 && (S.time - S.ramGate) >= CFG.RAM_GATE_SECONDS && moving;
     const diff = NBN.angleDiff(c.angle, wantAngle);
     c.angle += NBN.clamp(diff, -2.4 * dt, 2.4 * dt);
-    // A cruiser that may not ram yet HOLDS at a distance instead of pushing
-    // into the player's car: inside the hold ring it stops; outside it it
-    // closes in at a cruise, never at ramming speed.
+    // Speed: a cruiser that may not ram RETREATS to the hold ring — it never
+    // loiters on the bumper. One that may ram lunges in. Far away it cruises.
     let target;
-    if (!ramReady && p.inCar && d < CFG.RAM_HOLD_DIST) target = 0;
+    if (p.inCar && !ramReady && d < CFG.RAM_HOLD_DIST) target = -160;
+    else if (p.inCar && !ramReady) target = 200;
+    else if (ramReady && d <= 90) target = 220;
     else if (d > 260) target = 330;
     else if (d > 90) target = 260;
     else target = 120;
     c.speed = NBN.lerp(c.speed, target, Math.min(1, dt * 1.5));
     const nx = c.x + Math.cos(c.angle) * c.speed * dt;
     const ny = c.y + Math.sin(c.angle) * c.speed * dt;
-    // Slide along buildings: axis-separated, like the player.
-    const r = 20;
-    if (!NBN.city.hitBuilding(nx, c.y, r)) c.x = nx;
-    if (!NBN.city.hitBuilding(c.x, ny, r)) c.y = ny;
+    // Slide along buildings: axis-separated, like the player. A cruiser
+    // that makes no progress is wedged on a corner — reverse out and re-aim
+    // instead of grinding in place (the chase has to actually reach you).
+    const r = 16;
+    const blockedCX = NBN.city.hitBuilding(nx, c.y, r);
+    const blockedCY = NBN.city.hitBuilding(c.x, ny, r);
+    if (!blockedCX) c.x = nx;
+    if (!blockedCY) c.y = ny;
+    resolveBuildingOverlap(c, 16);
+    if (blockedCX && blockedCY) escapePocket(c, 16);
+    c.progT += dt;
+    if (c.progT >= 2) {
+      if (NBN.dist(c.x, c.y, c.progX, c.progY) < 25) {
+        c.stuckT += c.progT;
+        if (c.stuckT > 1.5) {
+          c.backoff = 0.9;
+          c.stuckT = 0;
+          c.angle += Math.PI / 2; // turn away from the wall, then re-aim
+        }
+      } else {
+        c.stuckT = 0;
+      }
+      c.progX = c.x;
+      c.progY = c.y;
+      c.progT = 0;
+    }
+    // Hard standoff, enforced AGAIN after the move: the cruiser may never
+    // end a frame inside the ring, however it got there.
+    if (p.inCar && NBN.dist(c.x, c.y, p.x, p.y) < CFG.POLICE_SEPARATION) pushCruiserOut(c);
     // Ram the player's car: a shove, not a shredder. One ram per gate across
     // all cruisers, then this cruiser backs off AND holds instead of
     // chain-ramming. A ram hurts the CAR only — the driver is shielded
     // inside it. The car is the stakes: lose it and you are on foot with
     // the whole Bay PD.
-    if (p.inCar && d < CFG.RAM_RANGE && ramReady) {
+    if (p.inCar && NBN.dist(c.x, c.y, p.x, p.y) < CFG.RAM_RANGE && ramReady) {
       S.ramGate = S.time;
       c.ramCd = CFG.RAM_COOLDOWN;
       c.backoff = CFG.RAM_BACKOFF_SECONDS;
@@ -689,20 +816,32 @@
       car.angle += steer * turnRate * dt * (car.speed >= 0 ? 1 : -1);
       const dx = Math.cos(car.angle) * car.speed * dt;
       const dy = Math.sin(car.angle) * car.speed * dt;
-      // Axis-separated slide: the car glides along walls and corners.
-      const r = 20;
+      // Axis-separated slide: the car glides along walls and corners. The
+      // wall radius is tighter than the sprite so the car rounds corners
+      // instead of wedging on them.
+      const r = 15;
+      let blockedX = false, blockedY = false;
       const nx = car.x + dx;
       if (!NBN.city.hitBuilding(nx, car.y, r) && !NBN.city.inWater(nx, car.y) && nx > r && nx < CFG.WORLD - r) car.x = nx;
-      else if (Math.abs(car.speed) > 60) {
-        car.speed *= 0.6;
-        spawnBurst(car.x, car.y, '#cfd2d8', 3);
-      }
+      else blockedX = true;
       const ny = car.y + dy;
       if (!NBN.city.hitBuilding(car.x, ny, r) && !NBN.city.inWater(car.x, ny) && ny > r && ny < CFG.WORLD - r) car.y = ny;
-      else if (Math.abs(car.speed) > 60) {
-        car.speed *= 0.6;
+      else blockedY = true;
+      // A wall grind bleeds speed down to a crawl, never to zero: a car
+      // grinding a wall used to lose its speed twice a frame and sit dead
+      // in a corner. It keeps at least 60 px/s so the driver can always
+      // steer or slide away.
+      if ((blockedX || blockedY) && Math.abs(car.speed) > 60) {
+        car.speed -= Math.sign(car.speed) * 200 * dt;
+        if (Math.abs(car.speed) < 60) car.speed = Math.sign(car.speed) * 60;
         spawnBurst(car.x, car.y, '#cfd2d8', 3);
       }
+      // If the car still ended up inside a building's margin (a corner
+      // pocket), shove it back out to the street so it can slide on.
+      resolveBuildingOverlap(car, 15);
+      // Wedged in a corner pocket (both axes blocked): nudge the car a
+      // few pixels toward the most open direction so it has room to drive.
+      if (blockedX && blockedY) escapePocket(car, 15);
       p.x = car.x;
       p.y = car.y;
       p.angle = car.angle;
@@ -832,6 +971,10 @@
     if (!S) return;
     S.time += dt;
     if (S.messageT > 0) S.messageT -= dt;
+    if (S.muzzle) {
+      S.muzzle.t -= dt;
+      if (S.muzzle.t <= 0) S.muzzle = null;
+    }
     if (S.flash > 0) S.flash = Math.max(0, S.flash - dt * 2.2);
     if (S.shake > 0) S.shake = Math.max(0, S.shake - dt * 26);
 

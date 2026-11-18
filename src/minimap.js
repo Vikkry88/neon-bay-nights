@@ -13,8 +13,10 @@
   function drawMinimap(ctx, vw, vh) {
     const S = NBN.world.getState();
     const M = NBN.missions.getState();
-    const x0 = vw - SIZE - 16;
-    const y0 = vh - SIZE - 16;
+    // Inset from the viewport edges so the frame is never clipped by the
+    // letterbox: the old 16px margin sat flush against the right edge.
+    const x0 = vw - SIZE - 28;
+    const y0 = vh - SIZE - 28;
 
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(x0 - 6, y0 - 6, SIZE + 12, SIZE + 12);
@@ -48,10 +50,10 @@
     for (const b of NBN.city.buildings) {
       ctx.fillRect(x0 + b.x * SCALE, y0 + b.y * SCALE, Math.max(1, b.w * SCALE), Math.max(1, b.h * SCALE));
     }
-    // Mission marker.
+    // Mission marker, in the target's own colour (same as its beacon ring).
     if (M.active && M.active.target) {
       const t = M.active.target;
-      ctx.fillStyle = '#ff2e88';
+      ctx.fillStyle = t.color || '#ff2e88';
       ctx.beginPath();
       ctx.arc(x0 + t.x * SCALE, y0 + t.y * SCALE, 5, 0, Math.PI * 2);
       ctx.fill();

@@ -33,10 +33,16 @@
     TRAFFIC_MAX: 28, // traffic cars alive at once
     TRAFFIC_TOPUP: 1.5, // per-second chance to replace a missing traffic car
     PARKED_CARS: 14,
-    // Police rams — the round-2 grind fix. A ram is a rare shove, never a
-    // shredder: one ram per 3.5s across ALL cruisers, only when the player's
-    // car is actually moving, small car-only damage, and the cruiser backs
-    // off and holds its distance afterwards instead of gluing to the bumper.
+    // Police rams — the round-2 grind fix, tightened in round 4 after a
+    // browser playtest showed the cruiser gluing itself to the player's
+    // bumper. A ram is a rare shove, never a shredder: one ram per 3.5s
+    // across ALL cruisers, only when the player's car is actually moving,
+    // small car-only damage, and the cruiser backs off and holds its
+    // distance afterwards instead of gluing to the bumper. The standoff
+    // is a real gap now (72px: the car is 46 long, so 46px was touching);
+    // a cruiser that may not ram RETREATS to the hold ring instead of
+    // sitting on the bumper, and it is pushed out to the side, never into
+    // the player's driving lane.
     RAM_CAR_DAMAGE: 1,
     RAM_COOLDOWN: 4.0, // seconds before one cruiser may ram again
     RAM_GATE_SECONDS: 3.5, // one ram per 3.5s across ALL cruisers
@@ -44,8 +50,8 @@
     RAM_HOLD_SECONDS: 3.0, // ...then holds at a distance this long
     RAM_HOLD_DIST: 130, // cruisers that may not ram yet hold at this distance
     RAM_MIN_PLAYER_SPEED: 30, // rams only land on a moving car
-    RAM_RANGE: 52, // how close a cruiser must be to ram
-    POLICE_SEPARATION: 46, // a cruiser is never allowed inside this of the player's car
+    RAM_RANGE: 80, // how close a cruiser must be to ram (just outside the standoff)
+    POLICE_SEPARATION: 72, // a cruiser is never allowed inside this of the player's car
     // Combat / damage (capped so one hit can never gut the player)
     TRAFFIC_HIT_DAMAGE: 4,
     BULLET_DAMAGE: 8,
