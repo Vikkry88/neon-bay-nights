@@ -201,7 +201,7 @@
     ctx.fillText('A driver for hire. Five jobs from Marla Voss. One city that never sleeps.', vw / 2, 320);
     ctx.font = '16px sans-serif';
     ctx.fillStyle = '#cfd2d8';
-    ctx.fillText('WASD move / drive · Mouse aim · E steal car · Space fight · P pause · M mute', vw / 2, 380);
+    ctx.fillText('WASD move / drive · Mouse aim · E steal / exit car · Space fight · P pause · M mute', vw / 2, 380);
     const save = NBN.save.load();
     if (save && save.missionsDone.length > 0) {
       ctx.fillStyle = '#7CFF6B';

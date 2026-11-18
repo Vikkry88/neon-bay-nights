@@ -58,7 +58,7 @@
     ctx.fillRect(vw - 300, 96, 286, 22);
     ctx.fillStyle = '#cfd2d8';
     ctx.font = '12px sans-serif';
-    ctx.fillText('WASD drive · E steal · Space fight · P pause', vw - 292, 111);
+    ctx.fillText('WASD drive · E steal / exit · Space fight · P pause', vw - 292, 111);
 
     // Bottom-left: speed when driving.
     if (p.inCar) {
@@ -156,6 +156,11 @@
     const m = M.active;
     const d = m.def;
     let text = `Mission ${d.id}: ${d.name} — ${d.hint}`;
+    // The objective line must always show the CURRENT job, never the step
+    // already done: after stealing the car, mission 1 is about the garage,
+    // not about stealing — the old text flipped back to the steal order
+    // while the player was already driving.
+    if (d.id === 1 && m.stage === 1) text = 'Mission 1: First Wheels — drive to the yellow garage marker';
     if (d.id === 3 && m.stage === 1) text = 'Mission 3: The Getaway — lose the cops, then reach the safehouse';
     if (d.id === 4 && m.stage === 1) text = 'Mission 4: Repo Man — deliver the coupe to the garage, over 30% condition';
     if (d.id === 5 && m.stage === 1) text = 'Mission 5: The Bay Trust Job — lose the Bay PD, reach the safehouse';

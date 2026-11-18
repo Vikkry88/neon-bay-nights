@@ -23,11 +23,15 @@
     const def = NBN.MISSIONS[i];
     const S = NBN.world.getState();
     const m = { def, stage: 0, timer: def.timeLimit || 0, target: null, cash: false, rico: false, guards: 0 };
-    if (i === 0) m.target = { x: NBN.PLACES.garage.x, y: NBN.PLACES.garage.y, label: 'Garage' };
-    if (i === 1) m.target = { x: NBN.PLACES.saltAirBar.x, y: NBN.PLACES.saltAirBar.y, label: 'Salt Air bar' };
-    if (i === 2) m.target = { x: NBN.PLACES.ricoPickup.x, y: NBN.PLACES.ricoPickup.y, label: 'Pick up Rico' };
-    if (i === 3) m.target = { x: NBN.PLACES.coupeLot.x, y: NBN.PLACES.coupeLot.y, label: 'Yellow coupe' };
-    if (i === 4) m.target = { x: NBN.PLACES.vault.x, y: NBN.PLACES.vault.y, label: 'Bay Trust vault' };
+    // Every target carries its beacon colour, so the ring, the minimap dot
+    // and the mission text all agree: the garage ring is yellow because the
+    // job says "yellow garage marker"; the safehouse ring is green because
+    // its zone is green. No more pink ring under a "yellow marker" order.
+    if (i === 0) m.target = { x: NBN.PLACES.garage.x, y: NBN.PLACES.garage.y, label: 'Garage', color: '#ffe14d' };
+    if (i === 1) m.target = { x: NBN.PLACES.saltAirBar.x, y: NBN.PLACES.saltAirBar.y, label: 'Salt Air bar', color: '#22e6ff' };
+    if (i === 2) m.target = { x: NBN.PLACES.ricoPickup.x, y: NBN.PLACES.ricoPickup.y, label: 'Pick up Rico', color: '#5cb8ff' };
+    if (i === 3) m.target = { x: NBN.PLACES.coupeLot.x, y: NBN.PLACES.coupeLot.y, label: 'Yellow coupe', color: '#ffe14d' };
+    if (i === 4) m.target = { x: NBN.PLACES.vault.x, y: NBN.PLACES.vault.y, label: 'Bay Trust vault', color: '#ffe14d' };
     M.active = m;
     M.banner = { title: `Mission ${def.id}: ${def.name}`, sub: def.brief, t: 4.5 };
     NBN.world.say(NBN.MISSION_INTRO + def.brief, 5);
@@ -117,7 +121,7 @@
         if (atTarget(60)) {
           m.stage = 1;
           m.rico = true;
-          m.target = { x: NBN.PLACES.safehouse.x, y: NBN.PLACES.safehouse.y, label: 'Safehouse' };
+          m.target = { x: NBN.PLACES.safehouse.x, y: NBN.PLACES.safehouse.y, label: 'Safehouse', color: '#7CFF6B' };
           NBN.world.addWanted(3);
           NBN.world.say('Rico: "Go go go! Lose them first, then the safehouse."');
           NBN.audio.sirenBlip();
@@ -132,7 +136,7 @@
       if (m.stage === 0) {
         if (p.inCar && p.inCar.coupe) {
           m.stage = 1;
-          m.target = { x: NBN.PLACES.garage.x, y: NBN.PLACES.garage.y, label: 'Garage' };
+          m.target = { x: NBN.PLACES.garage.x, y: NBN.PLACES.garage.y, label: 'Garage', color: '#ffe14d' };
           NBN.world.say('That is the one. Treat her gently — the garage, in one piece.');
         }
       } else if (m.stage === 1) {
@@ -154,7 +158,7 @@
         if (atTarget(70)) {
           m.stage = 1;
           m.cash = true;
-          m.target = { x: NBN.PLACES.safehouse.x, y: NBN.PLACES.safehouse.y, label: 'Safehouse' };
+          m.target = { x: NBN.PLACES.safehouse.x, y: NBN.PLACES.safehouse.y, label: 'Safehouse', color: '#7CFF6B' };
           NBN.world.addWanted(4);
           NBN.world.say('Cash in hand! Now lose the whole Bay PD and reach the safehouse.');
           NBN.audio.cash();
