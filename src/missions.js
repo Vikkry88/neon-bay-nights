@@ -5,14 +5,13 @@
   'use strict';
 
   const NBN = window.NBN;
-  const CFG = NBN.CFG;
 
   let M = null; // mission state
 
   function fresh() {
     return {
       index: 0, // next mission to start (0-based into NBN.MISSIONS)
-      active: null, // {def, stage, timer, target:{x,y,label}, cash, rico}
+      active: null, // {def, stage, timer, target:{x,y,label,color}, cash, rico}
       banner: null, // {title, sub, t} shown on start/complete
       failed: null, // {title, reason} for the fail screen
       completedFlash: null,
@@ -26,7 +25,7 @@
     // Every target carries its beacon colour, so the ring, the minimap dot
     // and the mission text all agree: the garage ring is yellow because the
     // job says "yellow garage marker"; the safehouse ring is green because
-    // its zone is green. No more pink ring under a "yellow marker" order.
+    // its zone is green.
     if (i === 0) m.target = { x: NBN.PLACES.garage.x, y: NBN.PLACES.garage.y, label: 'Garage', color: '#ffe14d' };
     if (i === 1) m.target = { x: NBN.PLACES.saltAirBar.x, y: NBN.PLACES.saltAirBar.y, label: 'Salt Air bar', color: '#22e6ff' };
     if (i === 2) m.target = { x: NBN.PLACES.ricoPickup.x, y: NBN.PLACES.ricoPickup.y, label: 'Pick up Rico', color: '#5cb8ff' };
@@ -184,12 +183,6 @@
     return true;
   }
 
-  function skipToNextAfterFail() {
-    // After a fail, the player can retry the same job (retryFailed) — this
-    // helper exists for the fail screen's "retry" path only.
-    return retryFailed();
-  }
-
   function initFromSave(save) {
     M = fresh();
     const done = save ? save.missionsDone : [];
@@ -203,6 +196,6 @@
   }
 
   NBN.missions = {
-    initFromSave, update, tryStartNext, retryFailed, skipToNextAfterFail, getState,
+    initFromSave, update, tryStartNext, retryFailed, getState,
   };
 })();

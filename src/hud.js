@@ -3,9 +3,11 @@
 // (with distance to the objective), messages, mission banners and the
 // red damage vignette.
 //
-// Round 3 polish: the objective line shows how far away the target is,
-// and the controls hint moved up under the HEALTH panel — it used to sit
-// on top of the minimap in the bottom-right corner.
+// The objective line always shows the CURRENT job, never the step already
+// done: after stealing the car, mission 1 is about the garage, not about
+// stealing — the old text flipped back to the steal order while the
+// player was already driving. The controls hint sits under the HEALTH
+// panel, never on top of the minimap.
 (function () {
   'use strict';
 
@@ -156,10 +158,9 @@
     const m = M.active;
     const d = m.def;
     let text = `Mission ${d.id}: ${d.name} — ${d.hint}`;
-    // The objective line must always show the CURRENT job, never the step
-    // already done: after stealing the car, mission 1 is about the garage,
-    // not about stealing — the old text flipped back to the steal order
-    // while the player was already driving.
+    // Stage-aware: once the steal is done, the banner is about the garage,
+    // never about stealing again. Once Rico is in the car, it is about
+    // losing the cops. Once the cash is grabbed, it is about escaping.
     if (d.id === 1 && m.stage === 1) text = 'Mission 1: First Wheels — drive to the yellow garage marker';
     if (d.id === 3 && m.stage === 1) text = 'Mission 3: The Getaway — lose the cops, then reach the safehouse';
     if (d.id === 4 && m.stage === 1) text = 'Mission 4: Repo Man — deliver the coupe to the garage, over 30% condition';

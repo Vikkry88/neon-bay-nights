@@ -2,27 +2,24 @@
 // One job: the living simulation — player, cars, traffic AI, pedestrians,
 // police, wanted level, combat, particles and explosions.
 //
-// Round 3 redesign, from what two browser playtests proved broken:
+// The design was proven by three browser playtests, so the hard lessons
+// are baked in here and must not regress:
 // - Police rams are RARE and gentle: one ram per 3.5s across all cruisers,
 //   only on a moving car, small car-only damage, then the cruiser backs off
 //   and holds its distance. No continuous contact damage of any kind — a
 //   cruiser is never allowed inside 72px of the player's car (46px was
 //   touching: the car is 46 long), and a cruiser that cannot ram yet
 //   RETREATS to the 130px hold ring instead of sitting on the bumper.
-// - Traffic cannot jam: a car that makes no progress for 5s respawns, a car
-//   blocked by a stopped car for 3s turns around, and no traffic ever
+// - A car can never wedge on a building corner: the wall check uses a
+//   tight radius, a wall grind only bleeds speed down to a crawl (never
+//   to zero), and a car that ends up inside a building's margin is shoved
+//   back out to the street, with a pocket-escape nudge when both axes
+//   are blocked. Cruisers get the same treatment so the chase can
+//   actually reach the player.
+// - Traffic cannot jam: a car that makes no progress for 5s respawns, a
+//   car blocked by a stopped car for 3s turns around, and no traffic ever
 //   spawns or wanders into a mission target circle.
 // - Steering works at walking pace: the turn rate floor is 60% of full.
-//
-// Round 4, from the third browser playtest: the car could wedge itself on
-// a building corner and never escape — the wall hit bled its speed to zero
-// twice a frame, and its heading kept pointing into the wall. So the wall
-// check uses a tighter radius, a wall grind only bleeds speed down to a
-// crawl (never to zero), and a car that ends up inside a building's margin
-// is shoved back out to the street (resolveBuildingOverlap) so it slides
-// along the wall instead of sitting in the corner's shadow. Cruisers get
-// the same treatment: a cruiser that makes no progress reverses out and
-// re-aims, so the chase can actually reach the player.
 (function () {
   'use strict';
 
@@ -370,9 +367,9 @@
       vx: Math.cos(a) * 640, vy: Math.sin(a) * 640, life: 0.9, from: 'player',
     });
     // Muzzle flash at the gun tip so the shot is unmistakable — a bright
-    // star that lingers a quarter of a second, so it shows in a still shot.
+    // star that lingers, so it shows in a still shot.
     spawnBurst(p.x + Math.cos(a) * 26, p.y + Math.sin(a) * 26, '#ffe14d', 8);
-    S.muzzle = { x: p.x + Math.cos(a) * 30, y: p.y + Math.sin(a) * 30, t: 0.25 };
+    S.muzzle = { x: p.x + Math.cos(a) * 30, y: p.y + Math.sin(a) * 30, t: 0.3 };
     S.shake = Math.max(S.shake, 2);
   }
 

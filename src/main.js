@@ -13,6 +13,7 @@
   let lastT = 0;
   let booted = false;
   let shotApplied = false;
+  let titleSave = null; // save snapshot read once at boot, shown on the title screen
 
   const camera = { x: 0, y: 0 };
 
@@ -32,6 +33,9 @@
     const save = NBN.save.load();
     NBN.world.init(save);
     NBN.missions.initFromSave(save);
+    // Cache the save for the title screen: drawing it read localStorage
+    // on every frame, which is pointless work 60 times a second.
+    titleSave = save;
     const S = NBN.world.getState();
     camera.x = S.player.x;
     camera.y = S.player.y;
@@ -102,7 +106,6 @@
       return;
     } else if (screen === 'failed') {
       drawFailed();
-      const M = NBN.missions.getState();
       if (NBN.input.hit('Enter') || NBN.input.hit('KeyR')) {
         NBN.missions.retryFailed();
         screen = 'playing';
@@ -202,7 +205,7 @@
     ctx.font = '16px sans-serif';
     ctx.fillStyle = '#cfd2d8';
     ctx.fillText('WASD move / drive · Mouse aim · E steal / exit car · Space fight · P pause · M mute', vw / 2, 380);
-    const save = NBN.save.load();
+    const save = titleSave;
     if (save && save.missionsDone.length > 0) {
       ctx.fillStyle = '#7CFF6B';
       ctx.fillText(`Welcome back — $${save.money} saved, ${save.missionsDone.length} of 5 jobs done.`, vw / 2, 420);

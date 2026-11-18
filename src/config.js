@@ -1,14 +1,16 @@
 // Neon Bay Nights — config.js
-// One job: every number the rest of the game shares, in one place.
-// Round 3 tuning: police rams are rare and gentle, steering works at
-// walking pace, traffic can never jam an intersection for long.
+// One job: every shared number, the palette, the five missions and the
+// named places, in one place. Tuned by three browser playtests: police
+// rams are rare and gentle, steering answers at walking pace, traffic can
+// never jam an intersection for long, and every mission target sits on a
+// street a driver can actually reach.
 (function () {
   'use strict';
 
   const NBN = (window.NBN = window.NBN || {});
 
   NBN.CFG = {
-    // World: a 3200 x 3200 coastal city. Streets on a 400px grid, 96px wide.
+    // World: 3200 x 3200 coastal city. Streets on a 400px grid, 96px wide.
     WORLD: 3200,
     GRID: 400,
     STREET: 96,
@@ -19,8 +21,8 @@
     SPRINT_MULT: 1.55,
     PLAYER_RADIUS: 14,
     PLAYER_HEALTH: 100,
-    // Cars — steering stays strong at low speed so a 90-degree turn at
-    // 5-8 mph takes about a second of steering, not dozens of key taps.
+    // Cars — steering keeps a strong floor at low speed, so a slow
+    // 90-degree turn takes about a second of steering, not key taps.
     CAR_LENGTH: 46,
     CAR_WIDTH: 24,
     CAR_ACCEL: 520,
@@ -33,16 +35,13 @@
     TRAFFIC_MAX: 28, // traffic cars alive at once
     TRAFFIC_TOPUP: 1.5, // per-second chance to replace a missing traffic car
     PARKED_CARS: 14,
-    // Police rams — the round-2 grind fix, tightened in round 4 after a
-    // browser playtest showed the cruiser gluing itself to the player's
-    // bumper. A ram is a rare shove, never a shredder: one ram per 3.5s
-    // across ALL cruisers, only when the player's car is actually moving,
-    // small car-only damage, and the cruiser backs off and holds its
-    // distance afterwards instead of gluing to the bumper. The standoff
-    // is a real gap now (72px: the car is 46 long, so 46px was touching);
-    // a cruiser that may not ram RETREATS to the hold ring instead of
-    // sitting on the bumper, and it is pushed out to the side, never into
-    // the player's driving lane.
+    // Police rams: a ram is a rare shove, never a shredder. One ram per
+    // 3.5s across ALL cruisers, only on a moving car, small car-only
+    // damage, and the cruiser backs off and holds its distance afterwards
+    // instead of gluing to the bumper. The standoff is a real gap (72px:
+    // the car is 46 long, so 46px was touching); a cruiser that may not
+    // ram RETREATS to the hold ring, and it is pushed out to the side,
+    // never into the player's driving lane.
     RAM_CAR_DAMAGE: 1,
     RAM_COOLDOWN: 4.0, // seconds before one cruiser may ram again
     RAM_GATE_SECONDS: 3.5, // one ram per 3.5s across ALL cruisers
@@ -126,9 +125,9 @@
     saltAirBar: { x: 2960, y: 1600 }, // beach, on the y=1600 street
     safehouse: { x: 600, y: 2400 }, // on the y=2400 street
     vault: { x: 1600, y: 1400 }, // on the x=1600 street
-    ricoPickup: { x: 2000, y: 2200 }, // on the x=2000 street (was inside a park block)
+    ricoPickup: { x: 2000, y: 2200 }, // on the x=2000 street
     coupeLot: { x: 1000, y: 2000 }, // on the y=2000 street
-    pistolPickup: { x: 1200, y: 800 }, // on the x=1200 street, just south of the garage — on the player's path, never behind a building corner
+    pistolPickup: { x: 1200, y: 800 }, // on the x=1200 street, just south of the garage
   };
 
   NBN.MISSION_INTRO = 'Marla Voss: ';

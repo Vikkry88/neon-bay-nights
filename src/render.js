@@ -2,15 +2,19 @@
 // One job: draw the world — ground, streets, beach, buildings, cars,
 // pedestrians, police, particles, markers and the player.
 //
-// Round 3 polish, from what the browser playtests showed:
+// Polish rules learned from the browser playtests:
 // - Place labels sit BELOW their zones (the beacon label sits above), so
 //   they can never stack on each other or hide behind the car health bar.
+//   GARAGE and PISTOL sit only 200px apart on the same street, so their
+//   labels are STAGGERED to different heights and never overlap.
 // - Police are unmistakable: white body, black hood and trunk, a big
 //   flashing light bar, POLICE on the side, and a red/blue glow halo.
 // - The player's car shows its front clearly: bright windshield, headlight
-//   cones and a hood chevron — never just taillights.
+//   cones and a hood chevron, plus a yellow direction arrow at the nose.
 // - Traffic cars show NO health bars (only the player's own car does).
 // - The pistol pickup is a tall glowing beacon, not a small box.
+// - Bullets draw a LONG bright tracer and the muzzle flash is big and
+//   long-lived, so a shot is unmistakable even in a still screenshot.
 (function () {
   'use strict';
 
@@ -184,13 +188,15 @@
     return { x: sx + cam.x - vw / 2, y: sy + cam.y - vh / 2 };
   }
 
-  // A label with a solid dark backing, drawn BELOW its anchor so it never
-  // stacks on the mission beacon label above or the car health bar.
-  function placeLabel(ctx, x, y, text, color, cam, vw, vh) {
+  // A label with a solid dark backing, drawn at a chosen offset from its
+  // anchor. The `dy` stagger is what keeps the GARAGE label (below its
+  // zone) from ever landing on the PISTOL label (above its beacon): the two
+  // places are only 200px apart on the same street.
+  function placeLabel(ctx, x, y, text, color, cam, vw, vh, dy) {
     ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'center';
     const w = ctx.measureText(text).width + 18;
-    const at = clampLabelRect(x - w / 2, y + 52, w, 22, cam, vw, vh);
+    const at = clampLabelRect(x - w / 2, y + dy, w, 22, cam, vw, vh);
     ctx.fillStyle = 'rgba(0,0,0,0.75)';
     ctx.fillRect(at.x, at.y, w, 22);
     ctx.fillStyle = color;
@@ -201,17 +207,19 @@
     const P = NBN.PLACES;
     const M = NBN.missions.getState();
     const S = NBN.world.getState();
-    // Garage zone.
+    // Garage zone — yellow ring, matching the banner text colour.
     ctx.strokeStyle = '#ffe14d';
     ctx.lineWidth = 3;
     ctx.setLineDash([10, 8]);
     ctx.strokeRect(P.garage.x - 55, P.garage.y - 45, 110, 90);
     ctx.setLineDash([]);
-    placeLabel(ctx, P.garage.x, P.garage.y, 'GARAGE', '#ffe14d', cam, vw, vh);
+    // GARAGE label BELOW its zone (dy +52); the PISTOL label sits ABOVE its
+    // beacon, so the two never share a row.
+    placeLabel(ctx, P.garage.x, P.garage.y, 'GARAGE', '#ffe14d', cam, vw, vh, 52);
     // Safehouse.
     ctx.strokeStyle = '#7CFF6B';
     ctx.strokeRect(P.safehouse.x - 45, P.safehouse.y - 45, 90, 90);
-    placeLabel(ctx, P.safehouse.x, P.safehouse.y, 'SAFEHOUSE', '#7CFF6B', cam, vw, vh);
+    placeLabel(ctx, P.safehouse.x, P.safehouse.y, 'SAFEHOUSE', '#7CFF6B', cam, vw, vh, 52);
     // Salt Air bar on the beach.
     ctx.fillStyle = '#c96a3b';
     ctx.fillRect(P.saltAirBar.x - 40, P.saltAirBar.y - 26, 80, 52);
@@ -244,11 +252,16 @@
       // The pistol itself.
       ctx.fillStyle = '#222';
       ctx.fillRect(P.pistolPickup.x - 12, P.pistolPickup.y - 4 + bob, 24, 8);
+      // PISTOL label ABOVE the beacon (dy -58), staggered away from the
+      // GARAGE label below the garage zone 200px north of here.
       ctx.fillStyle = '#ffe14d';
       ctx.font = 'bold 12px sans-serif';
       ctx.textAlign = 'center';
       const pw = ctx.measureText('PISTOL').width + 18;
-      const pat = clampLabelRect(P.pistolPickup.x - pw / 2, P.pistolPickup.y - 34 + bob - 13, pw, 16, cam, vw, vh);
+      const pat = clampLabelRect(P.pistolPickup.x - pw / 2, P.pistolPickup.y - 58 + bob, pw, 16, cam, vw, vh);
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillRect(pat.x, pat.y, pw, 16);
+      ctx.fillStyle = '#ffe14d';
       ctx.fillText('PISTOL', pat.x + pw / 2, pat.y + 13);
     }
     // Mission target beacon, in the target's own colour (the garage ring is
@@ -496,34 +509,40 @@
     // Cars, sorted so the player's car draws last.
     const cars = S.cars.slice().sort((a, b) => (a.kind === 'player' ? 1 : 0) - (b.kind === 'player' ? 1 : 0));
     for (const c of cars) drawCar(ctx, c);
-    // Bullets: a long bright tracer line + a big dot, so a shot is
-    // unmistakable even in a still screenshot (the old 13px trail vanished
-    // between frames).
-    ctx.strokeStyle = '#ffe14d';
-    ctx.lineWidth = 4;
-    ctx.fillStyle = '#fff3b0';
+    // Bullets: a LONG bright tracer line + a big dot, so a shot is
+    // unmistakable even in a still screenshot. The trail is 0.15s of travel
+    // (~96px) with a white-hot core, and the head dot is 7px.
     for (const b of S.bullets) {
+      ctx.strokeStyle = 'rgba(255,225,77,0.9)';
+      ctx.lineWidth = 6;
       ctx.beginPath();
-      ctx.moveTo(b.x - b.vx * 0.06, b.y - b.vy * 0.06);
+      ctx.moveTo(b.x - b.vx * 0.15, b.y - b.vy * 0.15);
       ctx.lineTo(b.x, b.y);
       ctx.stroke();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.arc(b.x, b.y, 5.5, 0, Math.PI * 2);
+      ctx.moveTo(b.x - b.vx * 0.15, b.y - b.vy * 0.15);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      ctx.fillStyle = '#fff3b0';
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 7, 0, Math.PI * 2);
       ctx.fill();
     }
-    // Muzzle flash: a bright star that lingers a quarter of a second after
-    // the shot, so the shot is visible even in a still screenshot.
+    // Muzzle flash: a bright star that lingers 0.3s after the shot, so the
+    // shot is visible even in a still screenshot.
     if (S.muzzle) {
-      const a = Math.max(0, S.muzzle.t / 0.25);
+      const a = Math.max(0, S.muzzle.t / 0.3);
       ctx.save();
       ctx.globalAlpha = a;
       ctx.fillStyle = '#ffe14d';
       ctx.beginPath();
-      ctx.arc(S.muzzle.x, S.muzzle.y, 13, 0, Math.PI * 2);
+      ctx.arc(S.muzzle.x, S.muzzle.y, 17, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = '#fff';
       ctx.beginPath();
-      ctx.arc(S.muzzle.x, S.muzzle.y, 6, 0, Math.PI * 2);
+      ctx.arc(S.muzzle.x, S.muzzle.y, 8, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
