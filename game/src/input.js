@@ -1,113 +1,78 @@
-// Keyboard and pointer input. Held keys are read every frame as a movement vector; one-shot
-// presses (confirm, pause, mute, interact, punch) are queued as bit flags and taken once by
-// the loop, so a press between two frames is never lost and never counted twice. The mouse
-// position is tracked in screen pixels and converted to world aim by the caller.
+// Neon Bay Nights — input.js
+// One job: keyboard + mouse state, with edge-triggered presses.
+(function () {
+  'use strict';
 
-export const ACTION_CONFIRM = 1;
-export const ACTION_PAUSE = 2;
-export const ACTION_MUTE = 4;
-export const ACTION_INTERACT = 8;
-export const ACTION_PUNCH = 16;
-export const ACTION_CLICK = 32;
+  const NBN = window.NBN;
 
-const UP = new Set(['ArrowUp', 'KeyW']);
-const DOWN = new Set(['ArrowDown', 'KeyS']);
-const LEFT = new Set(['ArrowLeft', 'KeyA']);
-const RIGHT = new Set(['ArrowRight', 'KeyD']);
-const CONFIRM = new Set(['Enter']);
-const PUNCH = new Set(['Space']);
-const PAUSE = new Set(['KeyP', 'Escape']);
-const MUTE = new Set(['KeyM']);
-const INTERACT = new Set(['KeyE']);
+  const keys = Object.create(null); // held keys, by code
+  const pressed = Object.create(null); // keys pressed since last frame
+  const mouse = { x: 0, y: 0, down: false, clicked: false };
 
-export function createInput(canvas) {
-  const held = new Set();
-  let actions = 0;
-  let mouseX = 0;
-  let mouseY = 0;
-  let mouseDown = false;
-  let mouseClicked = false;
+  const GAME_KEYS = [
+    'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space',
+    'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyE', 'KeyP', 'KeyM', 'ShiftLeft', 'ShiftRight',
+  ];
 
-  window.addEventListener('keydown', (event) => {
-    if (UP.has(event.code) || DOWN.has(event.code) || LEFT.has(event.code) || RIGHT.has(event.code)) {
-      held.add(event.code);
-    } else if (CONFIRM.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_CONFIRM;
-    } else if (PUNCH.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_PUNCH;
-    } else if (PAUSE.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_PAUSE;
-    } else if (MUTE.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_MUTE;
-    } else if (INTERACT.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_INTERACT;
-    } else {
-      return;
+  function onKeyDown(e) {
+    if (GAME_KEYS.includes(e.code)) e.preventDefault();
+    if (!keys[e.code]) pressed[e.code] = true;
+    keys[e.code] = true;
+    if (e.code === 'KeyM') NBN.audio.toggleMute();
+  }
+  function onKeyUp(e) {
+    keys[e.code] = false;
+  }
+  function onMouseMove(e) {
+    const c = NBN.canvas;
+    if (!c) return;
+    const r = c.getBoundingClientRect();
+    mouse.x = (e.clientX - r.left) * (c.width / r.width);
+    mouse.y = (e.clientY - r.top) * (c.height / r.height);
+  }
+  function onMouseDown(e) {
+    if (e.button === 0) {
+      mouse.down = true;
+      mouse.clicked = true;
     }
-    event.preventDefault();
-  });
-  window.addEventListener('keyup', (event) => {
-    held.delete(event.code);
-  });
-  // A key released while the tab is hidden never sends keyup: let go of everything on blur.
-  window.addEventListener('blur', () => {
-    held.clear();
-    mouseDown = false;
-  });
-  canvas.addEventListener('pointermove', (event) => {
-    const rect = canvas.getBoundingClientRect();
-    mouseX = event.clientX - rect.left;
-    mouseY = event.clientY - rect.top;
-  });
-  canvas.addEventListener('pointerdown', (event) => {
-    const rect = canvas.getBoundingClientRect();
-    mouseX = event.clientX - rect.left;
-    mouseY = event.clientY - rect.top;
-    mouseDown = true;
-    mouseClicked = true;
-    // Clicking also confirms on menu screens (start / restart); in play it is shooting,
-    // so it carries its own flag and never starts a mission by accident.
-    actions |= ACTION_CLICK;
-  });
-  window.addEventListener('pointerup', () => {
-    mouseDown = false;
-  });
-  // Losing the window mid-drag (alt-tab, devtools) must not leave the trigger held down.
-  window.addEventListener('pointercancel', () => {
-    mouseDown = false;
-  });
-
-  function hasAny(codes) {
-    for (const code of codes) if (held.has(code)) return true;
-    return false;
+  }
+  function onMouseUp(e) {
+    if (e.button === 0) mouse.down = false;
   }
 
-  return {
-    /** Movement vector, each component -1, 0 or 1. */
-    move() {
-      return {
-        x: (hasAny(RIGHT) ? 1 : 0) - (hasAny(LEFT) ? 1 : 0),
-        y: (hasAny(DOWN) ? 1 : 0) - (hasAny(UP) ? 1 : 0),
-      };
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mousedown', onMouseDown);
+  window.addEventListener('mouseup', onMouseUp);
+  window.addEventListener('blur', () => {
+    for (const k of Object.keys(keys)) keys[k] = false;
+  });
+
+  NBN.input = {
+    keys,
+    pressed,
+    mouse,
+    down(code) {
+      return !!keys[code];
     },
-    /** True while W/Up (accelerate) is held; used for driving. */
-    up() { return hasAny(UP); },
-    /** True while S/Down (brake/reverse) is held; used for driving. */
-    down() { return hasAny(DOWN); },
-    /** -1/0/1 steering from A/D or arrows; used for driving. */
-    steer() { return (hasAny(RIGHT) ? 1 : 0) - (hasAny(LEFT) ? 1 : 0); },
-    mouse() { return { x: mouseX, y: mouseY, down: mouseDown }; },
-    /** True once per click; cleared when read. */
-    takeClick() {
-      const clicked = mouseClicked;
-      mouseClicked = false;
-      return clicked;
+    // True once, on the frame the key went down.
+    hit(code) {
+      return !!pressed[code];
     },
-    /** The one-shot presses since the last call, as ACTION_* flags. */
-    takeActions() {
-      const taken = actions;
-      actions = 0;
-      return taken;
+    axis() {
+      // -1..1 movement axes from WASD / arrows.
+      let x = 0;
+      let y = 0;
+      if (keys.KeyA || keys.ArrowLeft) x -= 1;
+      if (keys.KeyD || keys.ArrowRight) x += 1;
+      if (keys.KeyW || keys.ArrowUp) y -= 1;
+      if (keys.KeyS || keys.ArrowDown) y += 1;
+      return { x, y };
+    },
+    endFrame() {
+      for (const k of Object.keys(pressed)) pressed[k] = false;
+      mouse.clicked = false;
     },
   };
-}
+})();

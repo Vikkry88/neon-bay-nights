@@ -1,224 +1,242 @@
-// Boot and the one loop: input is read every frame, the world advances in fixed 1/60 s
-// steps (several in a slow frame, none in a fast one), and the renderer paints what is
-// there. The game moves between four screens: title, play, paused and game over.
-//
-// ?seed=N fixes the city's layout. ?shot=city|chase|mission|police (with &seed=N) stages
-// that scene instead of running the loop, paints it twice and sets window.__shotReady for
-// a screenshot.
+// Neon Bay Nights — main.js
+// One job: the game loop and the screens — title, playing, pause,
+// mission fail, WASTED / BUSTED — plus the camera and the boot sequence.
+(function () {
+  'use strict';
 
-import { CAR, STEP } from './config.js';
-import { createRandom } from './random.js';
-import { createWorld, EVENT_BUSTED, EVENT_MISSION_COMPLETE, EVENT_MISSION_FAIL, EVENT_WASTED } from './world.js';
-import { ACTION_CLICK, ACTION_CONFIRM, ACTION_INTERACT, ACTION_MUTE, ACTION_PAUSE, ACTION_PUNCH, createInput } from './input.js';
-import { createRenderer, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
-import { createAudio } from './audio.js';
-import { loadSave, readBest, writeBest, writeSave } from './save.js';
-import { stageShot } from './shots.js';
+  const NBN = window.NBN;
+  const CFG = NBN.CFG;
 
-/** The longest frame the loop catches up on; a longer stall (a hidden tab) is dropped, not replayed. */
-const MAX_FRAME = 0.25;
-/** Seconds a mission result banner stays on screen. */
-const BANNER_SECONDS = 3;
-/** Cash lost to hospital bills and fines when wasted or busted. */
-const DEATH_FINE = 100;
+  let canvas = null;
+  let ctx = null;
+  let screen = 'title'; // title | playing | paused | failed | over
+  let lastT = 0;
+  let booted = false;
+  let shotApplied = false;
 
-const params = new URLSearchParams(window.location.search);
-const shot = params.get('shot');
-const seedParam = Number.parseInt(params.get('seed') ?? '', 10);
-const seed = Number.isInteger(seedParam) ? seedParam : Math.floor(Math.random() * 4294967296);
+  const camera = { x: 0, y: 0 };
 
-const canvas = document.getElementById('game');
-const status = document.getElementById('status');
-const save = loadSave();
-const world = createWorld(createRandom(seed), save);
-const renderer = createRenderer(canvas);
-const audio = createAudio();
-
-function persist() {
-  writeSave({ money: world.state.money, done: world.state.done });
-  if (world.state.money > readBest()) writeBest(world.state.money);
-}
-
-function runShot(name) {
-  const scene = stageShot(name, world);
-  let painted = 0;
-  function paint() {
-    renderer.draw(world.state, scene.screen, { best: 0, money: world.state.money });
-    painted += 1;
-    if (painted < 2) requestAnimationFrame(paint);
-    else window.__shotReady = true;
+  function resize() {
+    canvas.width = CFG.VIEW_W;
+    canvas.height = CFG.VIEW_H;
   }
-  requestAnimationFrame(paint);
-}
 
-function runGame() {
-  const input = createInput(canvas);
-  let screen = SCREEN_TITLE;
-  let best = readBest();
-  let accumulator = 0;
-  let last = performance.now();
-  let banner = null;
-  let bannerUntil = 0;
-
-  function announce(message) {
-    status.textContent = message;
+  function boot() {
+    if (booted) return;
+    booted = true;
+    canvas = document.getElementById('game');
+    NBN.canvas = canvas;
+    ctx = canvas.getContext('2d');
+    resize();
+    NBN.city.buildCity();
+    const save = NBN.save.load();
+    NBN.world.init(save);
+    NBN.missions.initFromSave(save);
+    const S = NBN.world.getState();
+    camera.x = S.player.x;
+    camera.y = S.player.y;
+    window.addEventListener('mousedown', () => NBN.audio.unlock(), { once: true });
+    window.addEventListener('keydown', () => NBN.audio.unlock(), { once: true });
+    requestAnimationFrame(frame);
   }
 
   function startGame() {
-    // world.reset() keeps the saved money and completed jobs (it never touches them),
-    // so a restart after being wasted or busted keeps everything the player earned.
-    world.reset();
-    accumulator = 0;
-    screen = SCREEN_PLAY;
-    banner = null;
-    // The Space/click that started the game must not also fire as a punch or an
-    // interact on the first frame of play.
-    queuedInteract = false;
-    queuedPunch = false;
-    audio.unlock();
-    announce('Playing. Explore Neon Bay, steal a car, press Enter to take a job.');
-  }
-
-  function endGame(kind) {
-    screen = SCREEN_OVER;
-    world.state.money = Math.max(0, world.state.money - DEATH_FINE);
-    world.state.wanted = 0;
-    persist();
-    best = readBest();
-    audio.fail();
-    announce(kind === 'wasted' ? 'Wasted. Press Space or click to try again.' : 'Busted. Press Space or click to try again.');
-  }
-
-  function controls() {
-    const move = input.move();
-    const mouse = input.mouse();
-    const view = renderer.view;
-    const cam = world.state.camera;
-    const aimX = cam.x - 640 + (mouse.x - view.x) / view.scale;
-    const aimY = cam.y - 360 + (mouse.y - view.y) / view.scale;
-    return {
-      moveX: move.x,
-      moveY: move.y,
-      up: input.up(),
-      down: input.down(),
-      steer: input.steer(),
-      aimX,
-      aimY,
-      firing: mouse.down,
-      interact: false, // Set per-frame from the queued actions below.
-      punch: false,
-    };
-  }
-
-  // Interact (E) and punch (Space) are one-shot presses: remember them until the next step.
-  let queuedInteract = false;
-  let queuedPunch = false;
-
-  function step() {
-    if (screen === SCREEN_TITLE) {
-      world.step(STEP, controls(), audio, true);
-      return;
+    screen = 'playing';
+    NBN.audio.unlock();
+    NBN.audio.ensure();
+    NBN.audio.startEngine();
+    NBN.audio.startSiren();
+    NBN.audio.startMusic();
+    const S = NBN.world.getState();
+    const M = NBN.missions.getState();
+    if (!M.active && M.index < NBN.MISSIONS.length) {
+      NBN.world.say('Press Enter to take your first job from Marla Voss.', 6);
     }
-    const ctl = controls();
-    ctl.interact = queuedInteract;
-    ctl.punch = queuedPunch;
-    queuedInteract = false;
-    queuedPunch = false;
-    const events = world.step(STEP, ctl, audio, false);
-    if (events & EVENT_MISSION_COMPLETE) {
-      const def = world.missions.lastCompleted;
-      banner = { title: 'JOB DONE', line: def ? `${def.name} — +$${def.reward}` : '', color: '#ffd166' };
-      bannerUntil = performance.now() / 1000 + BANNER_SECONDS;
-      audio.cash();
-      audio.mission();
-      persist();
-      best = readBest();
-      announce(`Job complete: ${def ? def.name : ''}.`);
-    } else if (events & EVENT_MISSION_FAIL) {
-      banner = { title: 'JOB FAILED', line: 'Marla is not happy. Press Enter to try the next job.', color: '#ef476f' };
-      bannerUntil = performance.now() / 1000 + BANNER_SECONDS;
-      audio.fail();
-      announce('Job failed.');
+    // Screenshot staging runs once, right after the game starts.
+    const shot = NBN.shots.shotParam();
+    if (shot > 0 && !shotApplied) {
+      shotApplied = true;
+      NBN.shots.applyShot(shot);
+      camera.x = S.player.x;
+      camera.y = S.player.y;
     }
-    if (events & EVENT_WASTED) endGame('wasted');
-    else if (events & EVENT_BUSTED) endGame('busted');
+    window.__NBN_READY__ = true;
   }
 
-  function frame(now) {
+  function frame(t) {
     requestAnimationFrame(frame);
-    accumulator += Math.min((now - last) / 1000, MAX_FRAME);
-    last = now;
-    // Peek at the one-shot actions before handlePeeked consumes them, so E and Space
-    // reach the world as this frame's interact / punch.
-    const peeked = input.takeActions();
-    if (peeked & ACTION_INTERACT) queuedInteract = true;
-    if (peeked & ACTION_PUNCH) queuedPunch = true;
-    handlePeeked(peeked);
-    if (screen === SCREEN_TITLE || screen === SCREEN_PLAY) {
-      while (accumulator >= STEP && (screen === SCREEN_TITLE || screen === SCREEN_PLAY)) {
-        step();
-        accumulator -= STEP;
-      }
-    } else {
-      accumulator = 0;
-    }
-    const activeBanner = banner && now / 1000 < bannerUntil ? banner : null;
-    if (!activeBanner) banner = null;
-    renderer.draw(world.state, screen, { best, money: world.state.money, banner: activeBanner });
-  }
+    const dt = Math.min(0.05, (t - lastT) / 1000 || 0.016);
+    lastT = t;
+    const S = NBN.world.getState();
 
-  function handlePeeked(actions) {
-    if (actions & ACTION_MUTE) {
-      const muted = audio.toggleMute();
-      announce(muted ? 'Sound muted.' : 'Sound on.');
-    }
-    if (screen === SCREEN_TITLE || screen === SCREEN_OVER) {
-      if (actions & (ACTION_CONFIRM | ACTION_CLICK | ACTION_PUNCH)) {
-        audio.unlock();
-        startGame();
-      }
+    if (screen === 'title') {
+      drawTitle();
+      if (NBN.input.hit('Enter') || NBN.input.mouse.clicked) startGame();
+      NBN.input.endFrame();
       return;
     }
-    if (actions & ACTION_PAUSE) {
-      if (screen === SCREEN_PLAY) {
-        screen = SCREEN_PAUSED;
-        announce('Paused.');
-      } else if (screen === SCREEN_PAUSED) {
-        screen = SCREEN_PLAY;
-        announce('Playing.');
+    if (screen === 'playing') {
+      if (NBN.input.hit('KeyP') || NBN.input.hit('Escape')) {
+        screen = 'paused';
+        NBN.input.endFrame();
+        return;
       }
+      if (NBN.input.hit('Enter')) NBN.missions.tryStartNext();
+      NBN.world.update(dt);
+      if (S.over) {
+        screen = 'over';
+        NBN.save.save(S);
+      }
+      const M = NBN.missions.getState();
+      if (M.failed) screen = 'failed';
+    } else if (screen === 'paused') {
+      drawPaused();
+      if (NBN.input.hit('KeyP') || NBN.input.hit('Escape') || NBN.input.hit('Enter')) screen = 'playing';
+      NBN.input.endFrame();
+      return;
+    } else if (screen === 'failed') {
+      drawFailed();
+      const M = NBN.missions.getState();
+      if (NBN.input.hit('Enter') || NBN.input.hit('KeyR')) {
+        NBN.missions.retryFailed();
+        screen = 'playing';
+      }
+      NBN.input.endFrame();
+      return;
+    } else if (screen === 'over') {
+      drawOver();
+      if (NBN.input.hit('Enter') || NBN.input.hit('KeyR')) {
+        restart();
+      }
+      NBN.input.endFrame();
       return;
     }
-    if (screen !== SCREEN_PLAY) return;
-    if (actions & ACTION_CONFIRM) {
-      if (!world.missions.active) {
-        const next = world.missions.nextAvailable(world.state.done);
-        if (next) {
-          world.missions.start(next, world.missionHelpers);
-          audio.phone();
-          announce(`Job started: ${next.name}.`);
-        } else {
-          world.showMessage('All jobs done — Neon Bay is yours. Free roam!', 4);
-        }
-      }
-    }
+
+    // Camera: smooth follow, clamped to the world so no void shows, plus shake.
+    const p = S.player;
+    camera.x = NBN.lerp(camera.x, p.x, Math.min(1, dt * 5));
+    camera.y = NBN.lerp(camera.y, p.y, Math.min(1, dt * 5));
+    const vw = canvas.width;
+    const vh = canvas.height;
+    camera.x = NBN.clamp(camera.x, vw / 2, CFG.WORLD - vw / 2);
+    camera.y = NBN.clamp(camera.y, vh / 2, CFG.WORLD - vh / 2);
+    const shx = S.shake > 0 ? (Math.random() - 0.5) * S.shake : 0;
+    const shy = S.shake > 0 ? (Math.random() - 0.5) * S.shake : 0;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, vw, vh);
+    ctx.save();
+    ctx.translate(vw / 2 - camera.x + shx, vh / 2 - camera.y + shy);
+    NBN.render.drawWorld(ctx, camera, vw, vh);
+    ctx.restore();
+    NBN.minimap.drawMinimap(ctx, vw, vh);
+    NBN.hud.drawHud(ctx, vw, vh);
+    NBN.input.endFrame();
   }
 
-  // Leaving the tab pauses a running game rather than letting the city run unseen.
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden && screen === SCREEN_PLAY) {
-      screen = SCREEN_PAUSED;
-      announce('Paused.');
-      persist();
+  function restart() {
+    const S = NBN.world.getState();
+    // Keep money and completed missions; respawn safe in the park.
+    NBN.world.init({ money: S.player.money, missionsDone: S.missionsDone.slice(), bestWanted: S.bestWanted });
+    NBN.missions.initFromSave({ missionsDone: S.missionsDone.slice() });
+    const S2 = NBN.world.getState();
+    camera.x = S2.player.x;
+    camera.y = S2.player.y;
+    screen = 'playing';
+    NBN.world.say('Back on your feet. Neon Bay is still waiting.', 4);
+  }
+
+  function panel(title, lines, accent) {
+    const vw = canvas.width;
+    const vh = canvas.height;
+    ctx.fillStyle = 'rgba(8,10,24,0.82)';
+    ctx.fillRect(0, 0, vw, vh);
+    ctx.fillStyle = accent;
+    ctx.font = 'bold 52px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(title, vw / 2, vh / 2 - 60);
+    ctx.fillStyle = '#fff';
+    ctx.font = '18px sans-serif';
+    lines.forEach((ln, i) => ctx.fillText(ln, vw / 2, vh / 2 - 10 + i * 30));
+    ctx.textAlign = 'left';
+  }
+
+  function drawTitle() {
+    const vw = canvas.width;
+    const vh = canvas.height;
+    // Dusk gradient sky over the city silhouette.
+    const g = ctx.createLinearGradient(0, 0, 0, vh);
+    g.addColorStop(0, '#1b1035');
+    g.addColorStop(0.55, '#c94b7a');
+    g.addColorStop(1, '#ff9d5c');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, vw, vh);
+    // City skyline.
+    ctx.fillStyle = '#120a24';
+    let x = 0;
+    const rng = NBN.rng;
+    while (x < vw) {
+      const w = 60 + rng() * 90;
+      const h = 120 + rng() * 180;
+      ctx.fillRect(x, vh - h - 120, w, h + 120);
+      x += w + 8;
     }
-  });
+    // Neon windows.
+    ctx.fillStyle = '#22e6ff';
+    for (let i = 0; i < 40; i++) ctx.fillRect(rng() * vw, vh - 120 - rng() * 260, 6, 8);
+    ctx.fillStyle = '#ff2e88';
+    ctx.font = 'bold 84px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('NEON BAY', vw / 2, 210);
+    ctx.fillStyle = '#ffe14d';
+    ctx.font = 'bold 34px sans-serif';
+    ctx.fillText('NIGHTS', vw / 2, 258);
+    ctx.fillStyle = '#fff';
+    ctx.font = '18px sans-serif';
+    ctx.fillText('A driver for hire. Five jobs from Marla Voss. One city that never sleeps.', vw / 2, 320);
+    ctx.font = '16px sans-serif';
+    ctx.fillStyle = '#cfd2d8';
+    ctx.fillText('WASD move / drive · Mouse aim · E steal car · Space fight · P pause · M mute', vw / 2, 380);
+    const save = NBN.save.load();
+    if (save && save.missionsDone.length > 0) {
+      ctx.fillStyle = '#7CFF6B';
+      ctx.fillText(`Welcome back — $${save.money} saved, ${save.missionsDone.length} of 5 jobs done.`, vw / 2, 420);
+    }
+    const blink = Math.floor(Date.now() / 500) % 2 === 0;
+    if (blink) {
+      ctx.fillStyle = '#ffe14d';
+      ctx.font = 'bold 22px sans-serif';
+      ctx.fillText('Press Enter to start', vw / 2, 500);
+    }
+    ctx.textAlign = 'left';
+  }
 
-  announce('Neon Bay Nights. Press Space or click to start.');
-  // Debug handle for automated playtests: window.__nbn.world is the live simulation
-  // and window.__nbn.screen() is the current screen. It changes nothing in the game.
-  window.__nbn = { world, screen: () => screen };
-  requestAnimationFrame(frame);
-}
+  function drawPaused() {
+    panel('PAUSED', ['The city waits for no one — except now.', '', 'Enter / P — resume', 'M — mute'], '#22e6ff');
+  }
 
-if (shot) runShot(shot);
-else runGame();
+  function drawFailed() {
+    const M = NBN.missions.getState();
+    const f = M.failed;
+    panel('JOB FAILED', [f ? f.title : 'Mission failed', f ? f.reason : '', '', 'Enter — retry the job'], '#ff3b30');
+  }
+
+  function drawOver() {
+    const S = NBN.world.getState();
+    const title = S.over === 'busted' ? 'BUSTED' : 'WASTED';
+    panel(title, [
+      S.over === 'busted' ? 'The Bay PD caught up with you.' : 'Neon Bay got the better of you this time.',
+      `Cash kept: $${Math.floor(S.player.money)} · Jobs done: ${S.missionsDone.length} of 5`,
+      '',
+      'Enter — back on your feet',
+    ], '#ff3b30');
+  }
+
+  NBN.camera = camera;
+  NBN.main = { boot, startGame };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();

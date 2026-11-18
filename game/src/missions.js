@@ -1,218 +1,204 @@
-// Missions and story for Neon Bay Nights. Five jobs from the fixer Marla Voss, unlocked in
-// order; each is a list of steps the player works through. A step is one clear thing to do:
-// get in a car, reach a point, wait somewhere, or lose the police. The runner only reads
-// and nudges the world state — the world owns the simulation and the helpers it passes in.
+// Neon Bay Nights — missions.js
+// One job: the story — Marla Voss's five jobs, in order, with objectives,
+// markers, timers, rewards and fail states.
+(function () {
+  'use strict';
 
-import { CAR } from './config.js';
+  const NBN = window.NBN;
+  const CFG = NBN.CFG;
 
-export const MISSION_DEFS = [
-  {
-    id: 'm1',
-    name: 'First Wheels',
-    giver: 'Marla Voss',
-    brief: 'You need wheels before you can work. Steal any car on the street, then bring it to my garage.',
-    reward: 150,
-    steps: [
-      { kind: 'car', text: 'Steal a car — walk up to one and press E' },
-      { kind: 'driveTo', x: 2200, y: 1000, r: 90, text: 'Drive to Marla\u2019s garage' },
-    ],
-  },
-  {
-    id: 'm2',
-    name: 'Sunset Run',
-    giver: 'Marla Voss',
-    brief: 'A package for the Salt Air bar, down on the beach. The buyer does not wait. Get it there in 90 seconds.',
-    reward: 300,
-    timeLimit: 90,
-    steps: [
-      // A pickup completes the moment the player reaches its marker: making the
-      // player sit still for a second at a garage they just drove through adds
-      // nothing, and a dwell here can only strand the job on a timing edge.
-      { kind: 'pickup', x: 2200, y: 1000, r: 90, dwell: 0, text: 'Pick up the package at the garage' },
-      { kind: 'driveTo', x: 3050, y: 2430, r: 100, text: 'Deliver to the Salt Air bar on the beach' },
-    ],
-  },
-  {
-    id: 'm3',
-    name: 'The Getaway',
-    giver: 'Marla Voss',
-    brief: 'Rico botched a job and the Bay PD is on him. Pick him up, lose the heat, and get him to the safehouse.',
-    reward: 450,
-    steps: [
-      { kind: 'pickup', x: 1000, y: 1800, r: 80, dwell: 0, text: 'Pick up Rico — two of his rivals are waiting there' },
-      { kind: 'lose', text: 'Lose the police — get your wanted level to zero' },
-      { kind: 'driveTo', x: 600, y: 2200, r: 90, text: 'Drop Rico at the safehouse' },
-    ],
-  },
-  {
-    id: 'm4',
-    name: 'Repo Man',
-    giver: 'Marla Voss',
-    brief: 'A yellow coupe, parked up on Bayview Row. It is mine by paperwork and yours by hand. Bring it to the garage in one piece.',
-    reward: 600,
-    steps: [
-      { kind: 'targetCar', x: 2600, y: 1400, text: 'Steal the marked yellow coupe' },
-      { kind: 'deliver', x: 2200, y: 1000, r: 90, text: 'Deliver the coupe to the garage — keep it above 30% condition' },
-    ],
-  },
-  {
-    id: 'm5',
-    name: 'The Bay Trust Job',
-    giver: 'Marla Voss',
-    brief: 'The big one. Hit the Bay Trust vault, grab the cash, and vanish. The whole city will be looking for you.',
-    reward: 1000,
-    steps: [
-      { kind: 'grab', x: 1800, y: 600, r: 90, hold: 6, text: 'Hold at the Bay Trust vault — grab the cash (6s)' },
-      { kind: 'lose', text: 'Lose the police — get your wanted level to zero' },
-      { kind: 'driveTo', x: 600, y: 2200, r: 90, text: 'Escape to the safehouse with the money' },
-    ],
-  },
-];
+  let M = null; // mission state
 
-function dist(ax, ay, bx, by) {
-  const dx = ax - bx;
-  const dy = ay - by;
-  return Math.sqrt(dx * dx + dy * dy);
-}
-
-export function createMissionRunner() {
-  let active = null; // { def, step, timer, dwell, alarmRaised, rivalsSpawned }
-  let lastCompleted = null;
-
-  function start(def, helpers) {
-    active = { def, step: 0, timer: 0, dwell: 0, alarmRaised: false, rivalsSpawned: false };
-    helpers.message(`${def.giver}: ${def.name} — ${def.steps[0].text}`);
-    if (def.id === 'm4') helpers.spawnTargetCar(2600, 1400);
-    return active;
+  function fresh() {
+    return {
+      index: 0, // next mission to start (0-based into NBN.MISSIONS)
+      active: null, // {def, stage, timer, target:{x,y,label}, cash, rico}
+      banner: null, // {title, sub, t} shown on start/complete
+      failed: null, // {title, reason} for the fail screen
+      completedFlash: null,
+    };
   }
 
-  function stepDone(state, step, helpers) {
-    const player = state.player;
-    const pos = player.car ? player.car : player;
-    switch (step.kind) {
-      case 'car':
-        return player.car !== null;
-      case 'goto':
-      case 'driveTo':
-        // Reaching the marker counts whether the player drove or walked the last
-        // stretch: a car that blows up a block short of the safehouse must not
-        // strand the whole job — the player still had to get there.
-        return dist(pos.x, pos.y, step.x, step.y) < step.r;
-      case 'pickup':
-      case 'grab': {
-        if (dist(pos.x, pos.y, step.x, step.y) >= step.r) return false;
-        if (step.kind === 'grab' && !active.alarmRaised) {
-          active.alarmRaised = true;
-          helpers.addWanted(3);
-          helpers.spawnEnemies([
-            { x: step.x - 150, y: step.y - 110 },
-            { x: step.x + 150, y: step.y - 110 },
-            { x: step.x, y: step.y + 150 },
-          ]);
-          helpers.message('Alarm! Bay Trust security is on you — grab the cash and run!');
-        }
-        return true; // Dwell handled by the caller through active.dwell.
-      }
-      case 'targetCar':
-        return player.car !== null && player.car === state.targetCar;
-      case 'deliver':
-        return player.car !== null && player.car === state.targetCar && dist(pos.x, pos.y, step.x, step.y) < step.r;
-      case 'lose':
-        return state.wanted === 0;
-      default:
-        return false;
+  function startMission(i) {
+    const def = NBN.MISSIONS[i];
+    const S = NBN.world.getState();
+    const m = { def, stage: 0, timer: def.timeLimit || 0, target: null, cash: false, rico: false, guards: 0 };
+    if (i === 0) m.target = { x: NBN.PLACES.garage.x, y: NBN.PLACES.garage.y, label: 'Garage' };
+    if (i === 1) m.target = { x: NBN.PLACES.saltAirBar.x, y: NBN.PLACES.saltAirBar.y, label: 'Salt Air bar' };
+    if (i === 2) m.target = { x: NBN.PLACES.ricoPickup.x, y: NBN.PLACES.ricoPickup.y, label: 'Pick up Rico' };
+    if (i === 3) m.target = { x: NBN.PLACES.coupeLot.x, y: NBN.PLACES.coupeLot.y, label: 'Yellow coupe' };
+    if (i === 4) m.target = { x: NBN.PLACES.vault.x, y: NBN.PLACES.vault.y, label: 'Bay Trust vault' };
+    M.active = m;
+    M.banner = { title: `Mission ${def.id}: ${def.name}`, sub: def.brief, t: 4.5 };
+    NBN.world.say(NBN.MISSION_INTRO + def.brief, 5);
+    NBN.audio.missionStart();
+    if (i === 4) {
+      // Vault guards on duty.
+      const v = NBN.PLACES.vault;
+      S.guards.push(
+        { x: v.x - 60, y: v.y - 40, hp: 50, shootCd: 1 },
+        { x: v.x + 60, y: v.y + 40, hp: 50, shootCd: 1.4 },
+        { x: v.x, y: v.y + 70, hp: 50, shootCd: 1.8 },
+      );
+      NBN.world.addWanted(1);
     }
   }
 
-  /**
-   * Advance the active mission one step. Returns 'step' when a step finished, 'complete'
-   * when the last step finished, 'fail' when the mission failed, or null.
-   */
-  function update(state, dt, helpers) {
-    if (!active) return null;
-    const def = active.def;
-    active.timer += dt;
-    if (def.timeLimit && active.timer > def.timeLimit) {
-      active = null;
-      helpers.clearTargetCar();
-      return 'fail';
-    }
-    // m4: wreck the coupe below 30% condition and the job is blown.
-    if (def.id === 'm4' && active.step === 1 && state.player.car === state.targetCar && state.player.car.health <= CAR.health * 0.3) {
-      active = null;
-      helpers.clearTargetCar();
-      return 'fail';
-    }
-    const step = def.steps[active.step];
-    // Dwell steps (pickup / grab) need the player to stay in the radius.
-    if ((step.kind === 'pickup' || step.kind === 'grab') && stepDone(state, step, helpers)) {
-      const need = step.kind === 'grab' ? step.hold : step.dwell;
-      active.dwell += dt;
-      if (active.dwell < need) return null;
-    } else if (!stepDone(state, step, helpers)) {
-      // Dwell progress is kept even if the player is shoved out of the radius for a
-      // moment (a police ram, a scrape): a pickup or a grab is progress, not a timer
-      // that a single bump should zero.
-      // m3: once Rico is picked up, the heat arrives and his rivals show up.
-      if (def.id === 'm3' && active.step === 0 && !active.rivalsSpawned) {
-        // Rivals spawn the moment the player gets close to Rico.
-        const pos = state.player.car ? state.player.car : state.player;
-        if (dist(pos.x, pos.y, 1000, 1800) < 260) {
-          active.rivalsSpawned = true;
-          helpers.spawnEnemies([
-            { x: 940, y: 1740 },
-            { x: 1060, y: 1860 },
-          ]);
-          helpers.addWanted(2);
-          helpers.message('Rico\u2019s rivals opened fire! Lose the cops after you grab him.');
-        }
-      }
-      return null;
-    }
-    // Step finished.
-    active.step += 1;
-    active.dwell = 0;
-    if (def.id === 'm4' && active.step === 1) helpers.message('Coupe secured — now get it to the garage in one piece.');
-    if (active.step >= def.steps.length) {
-      const done = active;
-      active = null;
-      lastCompleted = done.def;
-      helpers.clearTargetCar();
-      return 'complete';
-    }
-    // A "lose the police" step gets a how-to, not just a goal: new players stall here.
-    if (def.steps[active.step].kind === 'lose') {
-      helpers.message('Lose the cops: drive flat out down a long straight — stars fade once no cruiser is close.');
+  function completeMission() {
+    const S = NBN.world.getState();
+    const m = M.active;
+    const def = m.def;
+    S.player.money += def.reward;
+    if (!S.missionsDone.includes(def.id)) S.missionsDone.push(def.id);
+    NBN.world.addFloat(S.player.x, S.player.y - 40, `+$${def.reward}`, '#7CFF6B');
+    NBN.audio.cash();
+    NBN.audio.missionDone();
+    M.banner = { title: 'Mission complete', sub: `${def.name} — $${def.reward} earned.`, t: 4 };
+    M.completedFlash = def.name;
+    M.active = null;
+    M.index++;
+    S.guards.length = 0;
+    NBN.save.save(S);
+    if (M.index < NBN.MISSIONS.length) {
+      NBN.world.say(`Job done. Call Marla when you're ready for the next one — press Enter.`, 5);
     } else {
-      helpers.message(def.steps[active.step].text);
+      NBN.world.say('All five jobs done. Neon Bay is yours, driver.', 6);
     }
-    return 'step';
   }
 
-  function objective() {
-    if (!active) return null;
-    return { name: active.def.name, text: active.def.steps[active.step].text, step: active.step, total: active.def.steps.length };
+  function failMission(reason) {
+    const S = NBN.world.getState();
+    M.failed = { title: M.active ? M.active.def.name : 'Mission failed', reason };
+    M.active = null;
+    S.guards.length = 0;
+    NBN.audio.fail();
   }
 
-  function target() {
-    if (!active) return null;
-    const step = active.def.steps[active.step];
-    if (typeof step.x === 'number' && typeof step.y === 'number') return { x: step.x, y: step.y };
-    if (step.kind === 'targetCar') return { x: 2600, y: 1400 };
-    return null;
+  function atTarget(r) {
+    const S = NBN.world.getState();
+    const t = M.active.target;
+    return t && NBN.dist(S.player.x, S.player.y, t.x, t.y) < r;
   }
 
-  return {
-    get active() { return active; },
-    get lastCompleted() { return lastCompleted; },
-    start,
-    update,
-    objective,
-    target,
-    /** The next mission the player has not finished, or null when all are done. */
-    nextAvailable(doneIds) {
-      for (const def of MISSION_DEFS) if (!doneIds.includes(def.id)) return def;
-      return null;
-    },
+  function update(dt) {
+    const S = NBN.world.getState();
+    if (!S || S.over) return;
+    if (M.banner) {
+      M.banner.t -= dt;
+      if (M.banner.t <= 0) M.banner = null;
+    }
+    if (M.failed) return;
+    const m = M.active;
+    if (!m) return;
+    const p = S.player;
+
+    // Timed missions.
+    if (m.def.timeLimit) {
+      m.timer -= dt;
+      if (m.timer <= 0) {
+        failMission('Out of time — the package never made it to the Salt Air.');
+        return;
+      }
+    }
+
+    if (m.def.id === 1) {
+      // Steal any car, bring it to the garage.
+      if (m.stage === 0 && p.inCar) {
+        m.stage = 1;
+        NBN.world.say('Good wheels. Now get it to the garage.');
+      }
+      if (m.stage === 1 && p.inCar && atTarget(70)) completeMission();
+    } else if (m.def.id === 2) {
+      // Deliver to the Salt Air bar in 90 seconds.
+      if (atTarget(70)) completeMission();
+    } else if (m.def.id === 3) {
+      // Pick up Rico, lose the cops, reach the safehouse.
+      if (m.stage === 0) {
+        if (atTarget(60)) {
+          m.stage = 1;
+          m.rico = true;
+          m.target = { x: NBN.PLACES.safehouse.x, y: NBN.PLACES.safehouse.y, label: 'Safehouse' };
+          NBN.world.addWanted(3);
+          NBN.world.say('Rico: "Go go go! Lose them first, then the safehouse."');
+          NBN.audio.sirenBlip();
+        }
+      } else if (m.stage === 1) {
+        if (p.wanted === 0 && atTarget(70)) completeMission();
+        else if (atTarget(70) && p.wanted > 0) NBN.world.say('Too hot — lose the cops before the safehouse!');
+      }
+    } else if (m.def.id === 4) {
+      // Steal the yellow coupe, deliver in one piece.
+      const coupe = S.cars.find((c) => c.coupe);
+      if (m.stage === 0) {
+        if (p.inCar && p.inCar.coupe) {
+          m.stage = 1;
+          m.target = { x: NBN.PLACES.garage.x, y: NBN.PLACES.garage.y, label: 'Garage' };
+          NBN.world.say('That is the one. Treat her gently — the garage, in one piece.');
+        }
+      } else if (m.stage === 1) {
+        if (!p.inCar || !p.inCar.coupe) {
+          // Left the coupe behind — still recoverable.
+          if (coupe && NBN.dist(p.x, p.y, coupe.x, coupe.y) > 200) NBN.world.say('You left the coupe — get back in it.');
+        }
+        if (p.inCar && p.inCar.coupe) {
+          if (p.inCar.health < 30) {
+            failMission('The coupe came back wrecked — below 30% condition. Job blown.');
+            return;
+          }
+          if (atTarget(70)) completeMission();
+        }
+      }
+    } else if (m.def.id === 5) {
+      // Grab the vault cash, lose the whole Bay PD, escape.
+      if (m.stage === 0) {
+        if (atTarget(70)) {
+          m.stage = 1;
+          m.cash = true;
+          m.target = { x: NBN.PLACES.safehouse.x, y: NBN.PLACES.safehouse.y, label: 'Safehouse' };
+          NBN.world.addWanted(4);
+          NBN.world.say('Cash in hand! Now lose the whole Bay PD and reach the safehouse.');
+          NBN.audio.cash();
+        }
+      } else if (m.stage === 1) {
+        if (p.wanted === 0 && atTarget(70)) completeMission();
+        else if (atTarget(70) && p.wanted > 0) NBN.world.say('Too hot — lose every cop before the safehouse!');
+      }
+    }
+  }
+
+  function tryStartNext() {
+    if (M.active || M.failed) return false;
+    if (M.index >= NBN.MISSIONS.length) return false;
+    startMission(M.index);
+    return true;
+  }
+
+  function retryFailed() {
+    if (!M.failed) return false;
+    M.failed = null;
+    startMission(M.index);
+    return true;
+  }
+
+  function skipToNextAfterFail() {
+    // After a fail, the player can retry the same job (retryFailed) — this
+    // helper exists for the fail screen's "retry" path only.
+    return retryFailed();
+  }
+
+  function initFromSave(save) {
+    M = fresh();
+    const done = save ? save.missionsDone : [];
+    // Resume at the first unfinished mission.
+    M.index = 0;
+    while (M.index < NBN.MISSIONS.length && done.includes(NBN.MISSIONS[M.index].id)) M.index++;
+  }
+
+  function getState() {
+    return M;
+  }
+
+  NBN.missions = {
+    initFromSave, update, tryStartNext, retryFailed, skipToNextAfterFail, getState,
   };
-}
+})();

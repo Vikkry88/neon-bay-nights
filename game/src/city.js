@@ -1,150 +1,153 @@
-// The city of Neon Bay: a street grid, building blocks, two parks, a beach and the sea,
-// traffic lights at every intersection, and the collision helpers the world uses.
-// Buildings are placed once from the seeded random, so the same seed always builds the
-// same city. Nothing here draws or steps the game; it only describes the map.
+// Neon Bay Nights — city.js
+// One job: the map of Neon Bay — street grid, buildings, parks, beach,
+// traffic lights and the named places, plus collision helpers.
+(function () {
+  'use strict';
 
-import { BEACH, PALETTE, ROAD_HALF, ROAD_SPACING, ROAD_X, ROAD_Y, SPAWN, WORLD } from './config.js';
+  const NBN = window.NBN;
+  const CFG = NBN.CFG;
+  const PAL = NBN.PALETTE;
 
-/** The two park blocks (grass, palms, paths), kept free of buildings. */
-export const PARKS = [
-  { x: ROAD_X[3] + ROAD_HALF, y: ROAD_Y[2] + ROAD_HALF, w: ROAD_SPACING - ROAD_HALF * 2, h: ROAD_SPACING - ROAD_HALF * 2 },
-  { x: ROAD_X[6] + ROAD_HALF, y: ROAD_Y[1] + ROAD_HALF, w: ROAD_SPACING - ROAD_HALF * 2, h: ROAD_SPACING - ROAD_HALF * 2 },
-];
+  // Streets run on a 400px grid; each street is 96px wide. A "block" is the
+  // 304px square between streets. Beach occupies the east edge.
+  const GRID = CFG.GRID;
+  const HALF_STREET = CFG.STREET / 2;
+  const WORLD = CFG.WORLD;
 
-/** The plaza around the spawn point, also kept clear of buildings. */
-const SPAWN_CLEAR = { x: SPAWN.x - 90, y: SPAWN.y - 90, w: 180, h: 180 };
+  // Which blocks are parks (col, row) — the spawn park is the safe one.
+  const PARKS = new Set(['1,2', '5,5', '2,6']);
+  const PLAZA = new Set(['3,3']); // downtown plaza, open ground
 
-function rectsOverlap(a, b) {
-  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
-}
+  const buildings = []; // {x,y,w,h,roof,wall,neon,sign}
+  const trees = []; // {x,y,r}
+  const lights = []; // traffic lights {x,y,phase}
+  const lamps = []; // street lamps {x,y}
 
-export function createCity(random) {
-  const buildings = [];
-  const palms = [];
-  // One or two buildings per block, placed inside the block with a margin from the roads.
-  for (let col = 0; col < ROAD_X.length - 1; col += 1) {
-    for (let row = 0; row < ROAD_Y.length - 1; row += 1) {
-      const bx = ROAD_X[col] + ROAD_HALF + 14;
-      const by = ROAD_Y[row] + ROAD_HALF + 14;
-      const bw = ROAD_SPACING - ROAD_HALF * 2 - 28;
-      const bh = ROAD_SPACING - ROAD_HALF * 2 - 28;
-      const block = { x: bx, y: by, w: bw, h: bh };
-      if (PARKS.some((park) => rectsOverlap(block, park))) continue;
-      if (rectsOverlap(block, SPAWN_CLEAR)) continue;
-      const count = random() < 0.55 ? 2 : 1;
-      const colorIndex = Math.floor(random() * PALETTE.building.length);
-      if (count === 1) {
-        const w = bw * (0.55 + random() * 0.3);
-        const h = bh * (0.55 + random() * 0.3);
-        buildings.push({
-          x: bx + (bw - w) / 2, y: by + (bh - h) / 2, w, h,
-          color: PALETTE.building[colorIndex], roof: PALETTE.buildingRoof[colorIndex],
-        });
-      } else {
-        // Two buildings side by side, split along the longer axis.
-        const horizontal = bw >= bh;
-        const split = 0.42 + random() * 0.16;
-        const gap = 26;
-        if (horizontal) {
-          const w1 = (bw - gap) * split;
-          const w2 = bw - gap - w1;
-          buildings.push({ x: bx, y: by + 8, w: w1, h: bh - 16, color: PALETTE.building[colorIndex], roof: PALETTE.buildingRoof[colorIndex] });
-          const c2 = Math.floor(random() * PALETTE.building.length);
-          buildings.push({ x: bx + w1 + gap, y: by + 8, w: w2, h: bh - 16, color: PALETTE.building[c2], roof: PALETTE.buildingRoof[c2] });
+  function blockAt(cx, cy) {
+    return { x0: cx * GRID + HALF_STREET, y0: cy * GRID + HALF_STREET, x1: (cx + 1) * GRID - HALF_STREET, y1: (cy + 1) * GRID - HALF_STREET };
+  }
+
+  function onRoad(x, y) {
+    if (x < 0 || y < 0 || x > WORLD || y > WORLD) return false;
+    const mx = x % GRID;
+    const my = y % GRID;
+    return mx < CFG.STREET || mx > GRID - CFG.STREET || my < CFG.STREET || my > GRID - CFG.STREET || x >= CFG.BEACH_X;
+  }
+
+  function inWater(x, y) {
+    return x >= CFG.WATER_X;
+  }
+
+  function buildCity() {
+    const rng = NBN.rng;
+    const cols = Math.floor(WORLD / GRID);
+    for (let cx = 0; cx < cols; cx++) {
+      for (let cy = 0; cy < cols; cy++) {
+        const b = blockAt(cx, cy);
+        if (b.x1 > CFG.BEACH_X) continue; // beach blocks stay open sand
+        const key = `${cx},${cy}`;
+        if (PARKS.has(key)) {
+          // Park: trees and paths, no buildings.
+          const n = 7 + Math.floor(rng() * 5);
+          for (let i = 0; i < n; i++) {
+            trees.push({ x: b.x0 + 20 + rng() * (b.x1 - b.x0 - 40), y: b.y0 + 20 + rng() * (b.y1 - b.y0 - 40), r: 12 + rng() * 8 });
+          }
+          continue;
+        }
+        if (PLAZA.has(key)) {
+          for (let i = 0; i < 4; i++) trees.push({ x: b.x0 + 40 + i * 70, y: b.y0 + 40, r: 12 });
+          continue;
+        }
+        // One or two buildings per block, with a gap between them.
+        const split = rng() < 0.55;
+        const bw = b.x1 - b.x0;
+        const bh = b.y1 - b.y0;
+        const mk = (x0, y0, x1, y1) => {
+          const roof = NBN.pick(PAL.buildingRoof);
+          const wall = NBN.pick(PAL.buildingWall);
+          const neon = rng() < 0.6 ? NBN.pick(PAL.neon) : null;
+          buildings.push({ x: x0, y: y0, w: x1 - x0, h: y1 - y0, roof, wall, neon, sign: rng() < 0.4 });
+        };
+        if (split) {
+          const cut = b.x0 + bw * (0.42 + rng() * 0.16);
+          mk(b.x0 + 8, b.y0 + 8, cut - 8, b.y1 - 8);
+          mk(cut + 8, b.y0 + 8, b.x1 - 8, b.y1 - 8);
         } else {
-          const h1 = (bh - gap) * split;
-          const h2 = bh - gap - h1;
-          buildings.push({ x: bx + 8, y: by, w: bw - 16, h: h1, color: PALETTE.building[colorIndex], roof: PALETTE.buildingRoof[colorIndex] });
-          const c2 = Math.floor(random() * PALETTE.building.length);
-          buildings.push({ x: bx + 8, y: by + h1 + gap, w: bw - 16, h: h2, color: PALETTE.building[c2], roof: PALETTE.buildingRoof[c2] });
+          mk(b.x0 + 10, b.y0 + 10, b.x1 - 10, b.y1 - 10);
         }
       }
     }
-  }
-  // Palms: scattered in the parks and along the beach promenade.
-  for (const park of PARKS) {
-    for (let i = 0; i < 7; i += 1) {
-      palms.push({ x: park.x + 24 + random() * (park.w - 48), y: park.y + 24 + random() * (park.h - 48) });
+    // Traffic lights at every other intersection, offset phases.
+    for (let cx = 1; cx < cols; cx++) {
+      for (let cy = 1; cy < cols; cy++) {
+        if ((cx + cy) % 2 === 0) lights.push({ x: cx * GRID, y: cy * GRID, phase: (cx * 7 + cy * 3) % 10 });
+      }
+    }
+    // Street lamps along the beach boardwalk.
+    for (let y = 200; y < WORLD; y += 300) lamps.push({ x: CFG.BEACH_X - 30, y });
+    // A few palm trees on the sand.
+    for (let i = 0; i < 26; i++) {
+      trees.push({ x: CFG.BEACH_X + 40 + NBN.rng() * 120, y: 120 + NBN.rng() * (WORLD - 240), r: 11 });
     }
   }
-  for (let i = 0; i < 22; i += 1) {
-    palms.push({ x: 40 + random() * (WORLD.width - 80), y: BEACH.sandTop + 16 + random() * 110 });
-  }
-  // Traffic lights at every intersection, cycling on a shared clock.
-  const lights = [];
-  for (const x of ROAD_X) {
-    for (const y of ROAD_Y) lights.push({ x, y, phase: ((x + y) / ROAD_SPACING) % 2 });
-  }
-  return { buildings, palms, lights, parks: PARKS };
-}
 
-/** True when the point is on a road (within the road half-width of a grid line). */
-export function onRoad(x, y) {
-  for (const rx of ROAD_X) if (Math.abs(x - rx) <= ROAD_HALF) return true;
-  for (const ry of ROAD_Y) if (Math.abs(y - ry) <= ROAD_HALF) return true;
-  return false;
-}
-
-/** The nearest road line (vertical or horizontal) to the point, and its axis. */
-export function nearestRoad(x, y) {
-  let best = null;
-  for (const rx of ROAD_X) {
-    const d = Math.abs(x - rx);
-    if (!best || d < best.d) best = { axis: 'v', line: rx, d };
-  }
-  for (const ry of ROAD_Y) {
-    const d = Math.abs(y - ry);
-    if (!best || d < best.d) best = { axis: 'h', line: ry, d };
-  }
-  return best;
-}
-
-/** True when a circle of radius r at (x, y) touches any building. */
-export function hitsBuilding(city, x, y, r) {
-  for (const b of city.buildings) {
-    if (x + r > b.x && x - r < b.x + b.w && y + r > b.y && y - r < b.y + b.h) return b;
-  }
-  return null;
-}
-
-/**
- * Push a circle out of any building it overlaps, and clamp it inside the world (the sea
- * blocks the south edge, the map edge blocks the rest). Returns the building hit, if any.
- */
-export function resolveBuildingCollision(city, body, r) {
-  let hit = null;
-  for (const b of city.buildings) {
-    const cx = Math.max(b.x, Math.min(body.x, b.x + b.w));
-    const cy = Math.max(b.y, Math.min(body.y, b.y + b.h));
-    const dx = body.x - cx;
-    const dy = body.y - cy;
-    const d2 = dx * dx + dy * dy;
-    if (d2 >= r * r) continue;
-    hit = b;
-    if (d2 > 0.0001) {
-      const d = Math.sqrt(d2);
-      body.x = cx + (dx / d) * r;
-      body.y = cy + (dy / d) * r;
-    } else {
-      // Centre inside the building: push out along the smallest overlap.
-      const left = body.x - b.x + r;
-      const right = b.x + b.w - body.x + r;
-      const top = body.y - b.y + r;
-      const bottom = b.y + b.h - body.y + r;
-      const min = Math.min(left, right, top, bottom);
-      if (min === left) body.x = b.x - r;
-      else if (min === right) body.x = b.x + b.w + r;
-      else if (min === top) body.y = b.y - r;
-      else body.y = b.y + b.h + r;
+  // Circle vs building AABBs. Returns the first building hit, or null.
+  function hitBuilding(x, y, r) {
+    for (const b of buildings) {
+      const nx = NBN.clamp(x, b.x, b.x + b.w);
+      const ny = NBN.clamp(y, b.y, b.y + b.h);
+      const dx = x - nx;
+      const dy = y - ny;
+      if (dx * dx + dy * dy < r * r) return b;
     }
+    return null;
   }
-  body.x = Math.max(r, Math.min(WORLD.width - r, body.x));
-  body.y = Math.max(r, Math.min(BEACH.waterTop - r, body.y));
-  return hit;
-}
 
-/** Traffic-light state at an intersection: 'green' lets north-south go, 'red' stops it. */
-export function lightState(light, time) {
-  const cycle = (time / 6 + light.phase) % 2;
-  return cycle < 1 ? 'green' : 'red';
-}
+  // Move a circle with axis separation so it SLIDES along walls and corners
+  // instead of wedging: try x, then y, keeping each axis that stays clear.
+  function moveCircle(e, dx, dy, r) {
+    const nx = e.x + dx;
+    if (!hitBuilding(nx, e.y, r) && !inWater(nx, e.y) && nx > r && nx < WORLD - r) e.x = nx;
+    const ny = e.y + dy;
+    if (!hitBuilding(e.x, ny, r) && !inWater(e.x, ny) && ny > r && ny < WORLD - r) e.y = ny;
+  }
+
+  // Is a point clear of buildings (for spawning cars/peds)?
+  function clearOfBuildings(x, y, r) {
+    return !hitBuilding(x, y, r) && !inWater(x, y) && x > r && x < WORLD - r && y > r && y < WORLD - r;
+  }
+
+  // Nearest point on a road to (x, y): snaps to the closest street center line.
+  function nearestRoadPoint(x, y) {
+    const snap = (v) => {
+      const m = ((v % GRID) + GRID) % GRID;
+      if (m < HALF_STREET) return v - m + HALF_STREET / 2;
+      if (m > GRID - HALF_STREET) return v - m + GRID - HALF_STREET / 2;
+      // Inside a block: go to the nearest street edge line.
+      return m < GRID / 2 ? v - m + HALF_STREET / 2 : v - m + GRID - HALF_STREET / 2;
+    };
+    return { x: NBN.clamp(snap(x), 60, WORLD - 60), y: NBN.clamp(snap(y), 60, WORLD - 60) };
+  }
+
+  // Traffic light state at an intersection: true = green for east-west.
+  function lightGreen(light, t) {
+    const cycle = 10;
+    const phase = (t + light.phase) % cycle;
+    return phase < 5;
+  }
+
+  NBN.city = {
+    buildings,
+    trees,
+    lights,
+    lamps,
+    buildCity,
+    onRoad,
+    inWater,
+    hitBuilding,
+    moveCircle,
+    clearOfBuildings,
+    nearestRoadPoint,
+    lightGreen,
+  };
+})();

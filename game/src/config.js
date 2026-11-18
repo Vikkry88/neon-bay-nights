@@ -1,121 +1,103 @@
-// Every tuning number and colour for Neon Bay Nights, in one place. The world is a fixed
-// 3600x3000 logical area; the renderer scales a 1280x720 camera view of it to the window,
-// so no rule below depends on the screen size.
+// Neon Bay Nights — config.js
+// One job: every constant the rest of the game shares.
+(function () {
+  'use strict';
 
-export const STEP = 1 / 60;
+  const NBN = (window.NBN = window.NBN || {});
 
-export const WORLD = { width: 3600, height: 3000 };
+  NBN.CFG = {
+    // World: a 3200 x 3200 coastal city. Streets on a 400px grid, 96px wide.
+    WORLD: 3200,
+    GRID: 400,
+    STREET: 96,
+    BEACH_X: 2920, // sand starts here
+    WATER_X: 3100, // water starts here
+    // Player
+    WALK_SPEED: 190,
+    SPRINT_MULT: 1.55,
+    PLAYER_RADIUS: 14,
+    PLAYER_HEALTH: 100,
+    // Cars
+    CAR_LENGTH: 46,
+    CAR_WIDTH: 24,
+    CAR_ACCEL: 420,
+    CAR_MAX_SPEED: 460,
+    CAR_REVERSE_MAX: 150,
+    CAR_TURN: 2.9,
+    STEAL_RADIUS: 120, // generous steal prompt radius
+    // Combat / damage (capped so one hit can never gut the player)
+    TRAFFIC_HIT_DAMAGE: 4,
+    RAM_DAMAGE: 6,
+    BULLET_DAMAGE: 8,
+    PUNCH_DAMAGE: 12,
+    HIT_COOLDOWN: 0.7, // seconds between damage ticks from one source
+    // Wanted
+    WANTED_DECAY_SECONDS: 14, // quiet seconds per star lost
+    COP_CAR_MIN_DIST_ON_FOOT: 58, // a cruiser may never rest on the on-foot player
+    ARREST_SECONDS: 1.2, // a foot cop touching you this long busts you
+    // Spawn safety
+    SPAWN_INVULN_SECONDS: 3,
+    // Camera / view
+    VIEW_W: 1280,
+    VIEW_H: 720,
+  };
 
-/** Roads run on a 400 px grid; ROAD_HALF is half the road width (48 px each side). */
-export const ROAD_SPACING = 400;
-export const ROAD_HALF = 48;
-export const ROAD_X = [200, 600, 1000, 1400, 1800, 2200, 2600, 3000, 3400];
-export const ROAD_Y = [200, 600, 1000, 1400, 1800, 2200];
+  // Palette: sun-soaked coastal city, neon at dusk.
+  NBN.PALETTE = {
+    grass: '#5da24a',
+    parkGrass: '#6db35c',
+    sand: '#e8d29a',
+    water: '#2e7fa8',
+    waterDeep: '#1f5f86',
+    road: '#3c3f4a',
+    roadLine: '#e8d44d',
+    sidewalk: '#9aa0a8',
+    curb: '#7d838d',
+    buildingRoof: ['#b0563a', '#4a6b8a', '#8a5a7a', '#5a7a4a', '#a87c3a', '#6a5a8a'],
+    buildingWall: ['#8a4430', '#3a5468', '#6b4460', '#46603a', '#87622e', '#52446e'],
+    neon: ['#ff2e88', '#22e6ff', '#ffe14d', '#7CFF6B', '#ff7a2e'],
+  };
 
-/** The beach strip along the south edge: sand, then water. */
-export const BEACH = { sandTop: 2360, waterTop: 2520 };
+  // The five jobs from Marla Voss, in order. Money, story and names are original.
+  NBN.MISSIONS = [
+    {
+      id: 1, name: 'First Wheels', reward: 150,
+      brief: 'Marla Voss needs wheels. Steal any car and bring it to the garage.',
+      hint: 'Walk up to a car and press E to steal it. Then drive to the yellow garage marker.',
+    },
+    {
+      id: 2, name: 'Sunset Run', reward: 300, timeLimit: 90,
+      brief: 'A package for the Salt Air bar, on the beach. 90 seconds. No excuses.',
+      hint: 'You have the package. Drive east to the beach bar before the timer runs out.',
+    },
+    {
+      id: 3, name: 'The Getaway', reward: 450,
+      brief: 'Rico is hot and needs a lift. Pick him up, lose the Bay PD, reach the safehouse.',
+      hint: 'Pick up Rico at the blue marker, then shake the cops and get to the safehouse.',
+    },
+    {
+      id: 4, name: 'Repo Man', reward: 600,
+      brief: 'A yellow coupe, parked by the marina lot. Bring it back in one piece.',
+      hint: 'Steal the marked yellow coupe. Below 30% condition and the job is blown.',
+    },
+    {
+      id: 5, name: 'The Bay Trust Job', reward: 1000,
+      brief: 'The vault at Bay Trust. Grab the cash, lose the whole Bay PD, vanish.',
+      hint: 'Reach the vault, grab the cash, then lose every cop and reach the safehouse.',
+    },
+  ];
 
-/** Safe spawn: the middle of Coral Park, away from roads, traffic and enemies. */
-export const SPAWN = { x: 1600, y: 1200 };
+  // Key places in the city (world coordinates).
+  NBN.PLACES = {
+    spawnPark: { x: 600, y: 1000 }, // safe spawn: a park, away from traffic
+    garage: { x: 1400, y: 600 },
+    saltAirBar: { x: 2960, y: 1600 },
+    safehouse: { x: 600, y: 2600 },
+    vault: { x: 1600, y: 1400 },
+    ricoPickup: { x: 2200, y: 2200 },
+    coupeLot: { x: 1000, y: 2000 },
+    pistolPickup: { x: 1400, y: 760 },
+  };
 
-export const PLAYER = {
-  radius: 13,
-  walkSpeed: 230,
-  runSpeed: 300,
-  health: 100,
-  /** Seconds of invulnerability after spawning or respawning. */
-  spawnProtect: 3,
-  punchDamage: 25,
-  punchRange: 34,
-  punchCooldown: 0.35,
-};
-
-/** How close the player must be to a car for the steal prompt and the E steal:
- * 120 px, so the prompt shows while the player is still walking up to a car
- * instead of only when they are already on its door. */
-export const STEAL_RADIUS = 120;
-
-export const PISTOL = { ammo: 12, damage: 34, bulletSpeed: 900, fireCooldown: 0.28, range: 520 };
-
-export const CAR = {
-  length: 52,
-  width: 26,
-  accel: 430,
-  brake: 720,
-  reverseAccel: 280,
-  maxSpeed: 570,
-  maxReverse: 190,
-  turnRate: 3.2,
-  grip: 3.2,
-  health: 240,
-};
-
-export const TRAFFIC = { count: 14, speed: 170, minGap: 90 };
-export const PARKED = { count: 7 };
-export const PEDS = { count: 26, speed: 55 };
-
-export const WANTED = {
-  max: 5,
-  stealCar: 1,
-  hitPed: 1,
-  shoot: 1,
-  killPed: 2,
-  /** Seconds with no cop within WANTED.clearDistance before one star fades. */
-  decaySeconds: 3,
-  /** A cop farther away than this counts as "lost" for the decay timer. */
-  clearDistance: 350,
-};
-
-export const POLICE = {
-  /** How many police cars may chase at once, per wanted star. */
-  carsPerStar: 1,
-  maxCars: 3,
-  chaseSpeed: 400,
-  /** One ram on foot takes 5 health, not 8: a cruiser that catches the player
-   * on foot must sting, not take a quarter of their health per bump. */
-  ramDamage: 5,
-  /** Foot cops appear once the wanted level reaches this. */
-  footCopsFrom: 2,
-  arrestSeconds: 1.2,
-  /** A cruiser this far away for this long gives up and leaves. */
-  giveUpDistance: 700,
-  giveUpSeconds: 3,
-};
-
-export const ENEMY = { health: 50, speed: 170, damage: 5, shootRange: 380, shootCooldown: 1.8 };
-
-export const SAVE_KEY = 'neon-bay-nights.save.v1';
-export const BEST_KEY = 'neon-bay-nights.best.v1';
-
-export const PALETTE = {
-  backdrop: '#101623',
-  grass: '#7fb069',
-  grassDark: '#6da25c',
-  sand: '#e8cf9a',
-  water: '#2fa8c9',
-  waterDeep: '#1f7fa8',
-  road: '#3c414d',
-  roadLine: '#e8d44d',
-  sidewalk: '#9aa0a8',
-  park: '#79b264',
-  building: ['#e07856', '#e8a87c', '#7fb8a4', '#8fa8d8', '#c98bb8', '#e8c87c', '#a8c686'],
-  buildingRoof: ['#c96a4e', '#d89a6c', '#6fa894', '#7f98c8', '#b97ba8', '#d8b86c', '#98b676'],
-  palm: '#3f8f4f',
-  player: '#ffd166',
-  playerShirt: '#ef476f',
-  cop: '#2b6cb0',
-  copCar: '#2b6cb0',
-  trafficCar: ['#d64545', '#45a8d6', '#e8e8e8', '#f2b134', '#7c5cd6', '#5cd68a', '#d6d6d6'],
-  text: '#f4f1e8',
-  muted: '#b9c0cc',
-  gold: '#ffd166',
-  red: '#ef476f',
-  blue: '#4cc9f0',
-  panel: 'rgba(16, 22, 35, 0.92)',
-  panelBorder: '#ffd166',
-  marker: '#ffd166',
-  health: '#06d6a0',
-  wanted: '#ef476f',
-};
-
-export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+  NBN.MISSION_INTRO = 'Marla Voss: ';
+})();

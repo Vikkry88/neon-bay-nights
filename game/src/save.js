@@ -1,52 +1,46 @@
-// Save data in localStorage: cash earned, missions completed, and the best cash total.
-// Everything else (position, wanted level, traffic) is a fresh start each visit.
+// Neon Bay Nights — save.js
+// One job: persist progress (money, missions done) to localStorage.
+(function () {
+  'use strict';
 
-import { BEST_KEY, SAVE_KEY } from './config.js';
+  const NBN = window.NBN;
+  const KEY = 'neon-bay-nights-save-v1';
 
-export function loadSave() {
-  try {
-    const raw = window.localStorage.getItem(SAVE_KEY);
-    if (!raw) return { money: 0, done: [] };
-    const parsed = JSON.parse(raw);
-    return {
-      money: Number.isFinite(parsed.money) ? parsed.money : 0,
-      done: Array.isArray(parsed.done) ? parsed.done.filter((id) => typeof id === 'string') : [],
-    };
-  } catch {
-    return { money: 0, done: [] };
+  function load() {
+    try {
+      const raw = window.localStorage.getItem(KEY);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (typeof data !== 'object' || data === null) return null;
+      return {
+        money: typeof data.money === 'number' ? data.money : 0,
+        missionsDone: Array.isArray(data.missionsDone) ? data.missionsDone.filter((n) => typeof n === 'number') : [],
+        bestWanted: typeof data.bestWanted === 'number' ? data.bestWanted : 0,
+      };
+    } catch (err) {
+      return null;
+    }
   }
-}
 
-export function writeSave(save) {
-  try {
-    window.localStorage.setItem(SAVE_KEY, JSON.stringify(save));
-  } catch {
-    // Storage can be off (private windows): progress then lasts this visit only.
+  function save(state) {
+    try {
+      const data = {
+        money: Math.floor(state.money || 0),
+        missionsDone: (state.missionsDone || []).slice(),
+        bestWanted: state.bestWanted || 0,
+      };
+      window.localStorage.setItem(KEY, JSON.stringify(data));
+      return true;
+    } catch (err) {
+      return false;
+    }
   }
-}
 
-export function readBest() {
-  try {
-    return Number.parseInt(window.localStorage.getItem(BEST_KEY) ?? '0', 10) || 0;
-  } catch {
-    return 0;
+  function clear() {
+    try {
+      window.localStorage.removeItem(KEY);
+    } catch (err) { /* storage unavailable; play on without it */ }
   }
-}
 
-export function writeBest(value) {
-  try {
-    window.localStorage.setItem(BEST_KEY, String(value));
-  } catch {
-    // See writeSave.
-  }
-}
-
-/** Wipe the save (used after a corrupted or out-of-date save is detected). */
-export function clearSave() {
-  try {
-    window.localStorage.removeItem(SAVE_KEY);
-    window.localStorage.removeItem(BEST_KEY);
-  } catch {
-    // See writeSave.
-  }
-}
+  NBN.save = { load, save, clear };
+})();
