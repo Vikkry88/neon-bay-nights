@@ -1,6 +1,17 @@
 // Neon Bay Nights — world.js
 // One job: the living simulation — player, cars, traffic AI, pedestrians,
 // police, wanted level, combat, particles and explosions.
+//
+// Round 3 redesign, from what two browser playtests proved broken:
+// - Police rams are RARE and gentle: one ram per 3.5s across all cruisers,
+//   only on a moving car, small car-only damage, then the cruiser backs off
+//   and holds its distance. No continuous contact damage of any kind — a
+//   cruiser is never allowed inside 46px of the player's car, and a cruiser
+//   that cannot ram yet HOLDS at 130px instead of pushing in.
+// - Traffic cannot jam: a car that makes no progress for 5s respawns, a car
+//   blocked by a stopped car for 3s turns around, and no traffic ever
+//   spawns or wanders into a mission target circle.
+// - Steering works at walking pace: the turn rate floor is 60% of full.
 (function () {
   'use strict';
 
@@ -17,7 +28,7 @@
     return {
       x, y, angle, speed: 0, kind, color: color || NBN.pick(CAR_COLORS),
       health: 100, dir: 0, street: 0, turnAt: 0, stopped: false, ramCd: 0, crashCd: 0,
-      backoff: 0, stuckT: 0,
+      backoff: 0, holdT: 0, stuckT: 0, blockedT: 0, progX: x, progY: y, progT: 0,
       siren: kind === 'police', ai: kind === 'traffic' || kind === 'police',
     };
   }
@@ -52,6 +63,22 @@
     };
   }
 
+  // The active mission's target point, or null — traffic keeps clear of it.
+  function activeTarget() {
+    const M = NBN.missions ? NBN.missions.getState() : null;
+    return M && M.active && M.active.target ? M.active.target : null;
+  }
+
+  // Is a spot too close to a place traffic must never sit on?
+  function nearKeepClear(x, y) {
+    const P = NBN.PLACES;
+    if (NBN.dist(x, y, P.garage.x, P.garage.y) < 140) return true;
+    if (NBN.dist(x, y, P.safehouse.x, P.safehouse.y) < 140) return true;
+    const t = activeTarget();
+    if (t && NBN.dist(x, y, t.x, t.y) < 140) return true;
+    return false;
+  }
+
   function init(save) {
     S = newState(save);
     // Parked cars around the city, plus two near spawn so the first steal
@@ -80,7 +107,7 @@
       const horizontal = NBN.rng() < 0.5;
       const x = horizontal ? gx + NBN.rand(-120, 120) : gx + (NBN.rng() < 0.5 ? -20 : 20);
       const y = horizontal ? gy + (NBN.rng() < 0.5 ? -20 : 20) : gy + NBN.rand(-120, 120);
-      if (NBN.city.clearOfBuildings(x, y, 30) && NBN.dist(x, y, S.player.x, S.player.y) > 200) {
+      if (NBN.city.clearOfBuildings(x, y, 30) && NBN.dist(x, y, S.player.x, S.player.y) > 200 && !nearKeepClear(x, y)) {
         return { x, y, angle: horizontal ? (y < gy ? 0 : Math.PI) : (x < gx ? Math.PI / 2 : -Math.PI / 2) };
       }
     }
@@ -98,7 +125,7 @@
   }
 
   function spawnTrafficCar(anywhere) {
-    // Replacement cars spawn near the player (550–1100px away) so the streets
+    // Replacement cars spawn near the player (550-1100px away) so the streets
     // around them stay busy; the initial batch may spawn anywhere.
     let spot = randomRoadSpot();
     if (!anywhere) {
@@ -127,7 +154,11 @@
       c.y = gy + (c.dir === 0 ? 20 : -20);
     }
     c.speed = NBN.rand(90, 150);
+    c.progX = c.x;
+    c.progY = c.y;
+    c.progT = 0;
     if (!anywhere && NBN.dist(c.x, c.y, S.player.x, S.player.y) < 500) return;
+    if (nearKeepClear(c.x, c.y)) return;
     S.cars.push(c);
   }
 
@@ -313,6 +344,12 @@
     return bd < 120 ? best : null;
   }
 
+  function respawnTraffic(c) {
+    const i = S.cars.indexOf(c);
+    if (i >= 0) S.cars.splice(i, 1);
+    spawnTrafficCar(false);
+  }
+
   function updateTrafficCar(c, dt) {
     const dirs = [[1, 0], [0, 1], [-1, 0], [0, -1]]; // E S W N
     const d = dirs[c.dir];
@@ -332,11 +369,29 @@
         if (!myGreen) target = 0;
       }
     }
-    // Don't rear-end the car ahead.
+    // Don't rear-end the car ahead — and remember being blocked, so a
+    // deadlock (two stopped cars nose to nose) can be broken by a U-turn.
+    let blocked = false;
     for (const o of S.cars) {
       if (o === c || o.kind === 'parked') continue;
       const dd = NBN.dist(c.x, c.y, o.x, o.y);
-      if (dd < 60 && Math.abs(NBN.angleDiff(c.angle, NBN.angleTo(c.x, c.y, o.x, o.y))) < 0.6) target = 0;
+      if (dd < 60 && Math.abs(NBN.angleDiff(c.angle, NBN.angleTo(c.x, c.y, o.x, o.y))) < 0.6) {
+        target = 0;
+        blocked = true;
+        break;
+      }
+    }
+    if (blocked) {
+      c.blockedT += dt;
+      if (c.blockedT > CFG.TRAFFIC_BLOCKED_SECONDS) {
+        // Turn around and drive away — the jam behind clears itself.
+        c.dir = (c.dir + 2) % 4;
+        c.angle = Math.atan2(dirs[c.dir][1], dirs[c.dir][0]);
+        c.blockedT = 0;
+        c.stuckT = 0;
+      }
+    } else {
+      c.blockedT = 0;
     }
     c.speed = NBN.lerp(c.speed, target, Math.min(1, dt * 2));
     if (c.speed > 2) {
@@ -344,8 +399,8 @@
       c.y += d[1] * c.speed * dt;
       c.angle = Math.atan2(d[1], d[0]);
     }
-    // At the intersection: maybe turn.
-    if (distToNext <= 4) {
+    // At the intersection, while actually moving: maybe turn.
+    if (distToNext <= 4 && c.speed > 30) {
       const r = NBN.rng();
       if (r < 0.35) {
         // Turn left or right.
@@ -364,20 +419,29 @@
     }
     // Keep inside the world; loop back to the other side.
     if (c.x < 40 || c.x > CFG.WORLD - 60 || c.y < 40 || c.y > CFG.WORLD - 40) {
-      const i = S.cars.indexOf(c);
-      if (i >= 0) S.cars.splice(i, 1);
-      spawnTrafficCar(false);
+      respawnTraffic(c);
       return;
     }
-    // Stuck recovery: a car that has not moved for 8 seconds is in a jam that
-    // will never clear (deadlocked queue, abandoned player car, bad light) —
-    // respawn it on a fresh street instead of sitting there for minutes.
-    if (c.speed < 5) c.stuckT += dt;
-    else c.stuckT = 0;
-    if (c.stuckT > 8) {
-      const i = S.cars.indexOf(c);
-      if (i >= 0) S.cars.splice(i, 1);
-      spawnTrafficCar(false);
+    // Progress check: a car that has barely moved in 5 seconds is in a jam
+    // that will never clear — respawn it on a fresh street instead of
+    // sitting in an intersection for minutes.
+    c.progT += dt;
+    if (c.progT >= 2) {
+      const moved = NBN.dist(c.x, c.y, c.progX, c.progY);
+      if (moved < 30) c.stuckT += c.progT;
+      else c.stuckT = 0;
+      c.progX = c.x;
+      c.progY = c.y;
+      c.progT = 0;
+    }
+    if (c.stuckT > CFG.TRAFFIC_STUCK_SECONDS) {
+      respawnTraffic(c);
+      return;
+    }
+    // Never sit inside a mission target circle.
+    const t = activeTarget();
+    if (t && NBN.dist(c.x, c.y, t.x, t.y) < 80) {
+      respawnTraffic(c);
     }
   }
 
@@ -419,7 +483,7 @@
     const p = S.player;
     const a = NBN.rand(0, Math.PI * 2);
     const spot = NBN.city.nearestRoadPoint(p.x + Math.cos(a) * 700, p.y + Math.sin(a) * 700);
-    const c = makeCar(spot.x, spot.y, 0, 'police', '#1c2a4a');
+    const c = makeCar(spot.x, spot.y, 0, 'police', '#f2f2f2');
     c.speed = 200;
     S.cars.push(c);
     NBN.audio.sirenBlip();
@@ -437,8 +501,16 @@
       c.speed = Math.max(0, c.speed - 300 * dt);
       return;
     }
+    // And never inside the player's car either: push the CRUISER out, never
+    // the player — a cruiser glued to the bumper is what ground cars down.
+    if (p.inCar && d < CFG.POLICE_SEPARATION) {
+      const push = NBN.angleTo(p.x, p.y, c.x, c.y);
+      c.x = p.x + Math.cos(push) * CFG.POLICE_SEPARATION;
+      c.y = p.y + Math.sin(push) * CFG.POLICE_SEPARATION;
+      c.speed = 0;
+      return;
+    }
     // Backing off after a ram: reverse away from the player, no chase, no ram.
-    // This is what stops a cruiser pinning the player's car after it hits.
     if (c.backoff > 0) {
       c.backoff -= dt;
       c.speed = NBN.lerp(c.speed, -150, Math.min(1, dt * 3));
@@ -448,16 +520,33 @@
       if (!NBN.city.hitBuilding(c.x, by, 20)) c.y = by;
       return;
     }
+    // Holding after the backoff: sit at a distance, lights flashing, while
+    // the other cruisers take their turn. This is what stops two cruisers
+    // pinning one car at once.
+    if (c.holdT > 0) {
+      c.holdT -= dt;
+      c.speed = NBN.lerp(c.speed, 0, Math.min(1, dt * 3));
+      const diff = NBN.angleDiff(c.angle, wantAngle);
+      c.angle += NBN.clamp(diff, -2.4 * dt, 2.4 * dt);
+      return;
+    }
     if (c.ramCd > 0) c.ramCd -= dt;
     // One ram at a time, across ALL cruisers: this cruiser may ram only when
-    // its own cooldown is up AND no cruiser has rammed in the last gate window.
-    const ramReady = c.ramCd <= 0 && (S.time - S.ramGate) >= CFG.RAM_GATE_SECONDS;
+    // its own cooldown is up AND no cruiser has rammed in the last gate
+    // window AND the player's car is actually moving (a parked car is not
+    // a chase — ramming it is just grinding).
+    const moving = p.inCar && Math.abs(p.inCar.speed) > CFG.RAM_MIN_PLAYER_SPEED;
+    const ramReady = c.ramCd <= 0 && (S.time - S.ramGate) >= CFG.RAM_GATE_SECONDS && moving;
     const diff = NBN.angleDiff(c.angle, wantAngle);
     c.angle += NBN.clamp(diff, -2.4 * dt, 2.4 * dt);
-    // A cruiser that may not ram yet holds at a distance instead of pushing
-    // into the player's car — so two cruisers can never pin it at once.
-    const target = (p.inCar && d < CFG.RAM_HOLD_DIST && !ramReady) ? 0
-      : d > 260 ? 330 : d > 90 ? 260 : 120;
+    // A cruiser that may not ram yet HOLDS at a distance instead of pushing
+    // into the player's car: inside the hold ring it stops; outside it it
+    // closes in at a cruise, never at ramming speed.
+    let target;
+    if (!ramReady && p.inCar && d < CFG.RAM_HOLD_DIST) target = 0;
+    else if (d > 260) target = 330;
+    else if (d > 90) target = 260;
+    else target = 120;
     c.speed = NBN.lerp(c.speed, target, Math.min(1, dt * 1.5));
     const nx = c.x + Math.cos(c.angle) * c.speed * dt;
     const ny = c.y + Math.sin(c.angle) * c.speed * dt;
@@ -466,13 +555,15 @@
     if (!NBN.city.hitBuilding(nx, c.y, r)) c.x = nx;
     if (!NBN.city.hitBuilding(c.x, ny, r)) c.y = ny;
     // Ram the player's car: a shove, not a shredder. One ram per gate across
-    // all cruisers, then this cruiser backs off instead of chain-ramming.
-    // A ram hurts the CAR only — the driver is shielded inside it. The car
-    // is the stakes: lose it and you are on foot with the whole Bay PD.
-    if (p.inCar && d < 52 && ramReady) {
+    // all cruisers, then this cruiser backs off AND holds instead of
+    // chain-ramming. A ram hurts the CAR only — the driver is shielded
+    // inside it. The car is the stakes: lose it and you are on foot with
+    // the whole Bay PD.
+    if (p.inCar && d < CFG.RAM_RANGE && ramReady) {
       S.ramGate = S.time;
       c.ramCd = CFG.RAM_COOLDOWN;
       c.backoff = CFG.RAM_BACKOFF_SECONDS;
+      c.holdT = CFG.RAM_HOLD_SECONDS;
       const car = p.inCar;
       car.health = Math.max(0, car.health - CFG.RAM_CAR_DAMAGE);
       spawnBurst(car.x, car.y, '#ffe14d', 5);
@@ -586,13 +677,15 @@
     if (p.inCar) {
       const car = p.inCar;
       const ax = inp.axis();
-      // Arcade driving: W/S throttle, A/D steer (stronger at speed).
+      // Arcade driving: W/S throttle, A/D steer. The turn rate keeps a high
+      // floor at low speed, so a slow 90-degree turn answers in about a
+      // second of steering instead of dozens of key taps.
       const forward = -ax.y; // W = up = forward
       const steer = ax.x;
       if (forward > 0) car.speed = Math.min(CFG.CAR_MAX_SPEED, car.speed + CFG.CAR_ACCEL * dt);
       else if (forward < 0) car.speed = Math.max(-CFG.CAR_REVERSE_MAX, car.speed - CFG.CAR_ACCEL * 0.8 * dt);
       else car.speed = NBN.lerp(car.speed, 0, Math.min(1, dt * 1.2));
-      const turnRate = CFG.CAR_TURN * NBN.clamp(Math.abs(car.speed) / 200, 0.15, 1);
+      const turnRate = CFG.CAR_TURN * NBN.clamp(CFG.CAR_TURN_FLOOR + Math.abs(car.speed) / 500, CFG.CAR_TURN_FLOOR, 1);
       car.angle += steer * turnRate * dt * (car.speed >= 0 ? 1 : -1);
       const dx = Math.cos(car.angle) * car.speed * dt;
       const dy = Math.sin(car.angle) * car.speed * dt;
@@ -646,12 +739,13 @@
       NBN.audio.setEngine(0, false);
     }
 
-    // Pistol pickup by the garage.
-    if (!S.pistolTaken && !p.inCar && NBN.dist(p.x, p.y, NBN.PLACES.pistolPickup.x, NBN.PLACES.pistolPickup.y) < 34) {
+    // Pistol pickup by the garage — a glowing beacon marks it, and the HUD
+    // says where it is until it is taken.
+    if (!S.pistolTaken && !p.inCar && NBN.dist(p.x, p.y, NBN.PLACES.pistolPickup.x, NBN.PLACES.pistolPickup.y) < 40) {
       S.pistolTaken = true;
       p.hasPistol = true;
       p.ammo = 24;
-      say('Picked up a pistol — 24 rounds. Space to shoot.');
+      say('Picked up a pistol — 24 rounds. Space or click to shoot.');
       NBN.audio.pickup();
     }
 

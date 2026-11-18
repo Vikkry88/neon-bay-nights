@@ -23,10 +23,10 @@ Neon Bay is a full open world: a street grid with traffic lights, beach and boar
 ## Features
 
 - Open world on foot and by car, with a smooth following camera
-- Cars to steal (walk up and press **E**), arcade driving
-- Wanted level, 1–5 stars: police cars and foot cops chase, ram and arrest; lay low to cool off
-- Combat on foot: punch (**Space**) and a pistol pickup with ammo
-- HUD with live minimap, wanted stars, cash, health, speed and mission objective
+- Cars to steal (walk up and press **E**), arcade driving that answers at any speed
+- Wanted level, 1–5 stars: black-and-white police cruisers chase and ram (rarely, and never while you are parked), foot cops arrest; lay low to cool off
+- Combat on foot: punch (**Space**) and a pistol pickup by the garage, marked by a glowing beacon, with ammo in the HUD
+- HUD with live minimap, wanted stars, cash, health, speed, mission objective and distance to it
 - Title screen, pause, mission complete/fail screens, WASTED / BUSTED screens
 - Progress saved to localStorage (money and missions completed)
 - Particles, explosions, screen shake, synthesized WebAudio sound effects and a music loop (**M** to mute)
@@ -36,7 +36,7 @@ Neon Bay is a full open world: a street grid with traffic lights, beach and boar
 | Key | Action |
 | --- | --- |
 | W A S D / arrows | Move / drive |
-| Mouse | Aim on foot |
+| Mouse | Aim on foot, click to shoot |
 | Space | Punch / shoot (with pistol) |
 | E | Steal / enter car, exit car |
 | Shift | Sprint on foot |

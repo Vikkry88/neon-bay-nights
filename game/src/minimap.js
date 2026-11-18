@@ -1,5 +1,6 @@
 // Neon Bay Nights — minimap.js
-// One job: the live minimap — streets, beach, player, police, mission marker.
+// One job: the live minimap — streets, beach, player, police, mission
+// marker, traffic and the pistol pickup.
 (function () {
   'use strict';
 
@@ -58,13 +59,16 @@
       ctx.lineWidth = 1.5;
       ctx.stroke();
     }
-    // Police as blue dots.
-    ctx.fillStyle = '#2e7bff';
+    // Police as big blue dots with a white ring — never confused with traffic.
     for (const c of S.cars) {
       if (c.kind !== 'police') continue;
+      ctx.fillStyle = '#2e7bff';
       ctx.beginPath();
-      ctx.arc(x0 + c.x * SCALE, y0 + c.y * SCALE, 3.5, 0, Math.PI * 2);
+      ctx.arc(x0 + c.x * SCALE, y0 + c.y * SCALE, 4.5, 0, Math.PI * 2);
       ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
     }
     // Traffic as pale dots so the player can spot a car to steal.
     ctx.fillStyle = 'rgba(255,255,255,0.8)';
@@ -72,6 +76,18 @@
       if (c.kind !== 'traffic') continue;
       ctx.beginPath();
       ctx.arc(x0 + c.x * SCALE, y0 + c.y * SCALE, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Pistol pickup as a yellow diamond, until it is taken.
+    if (!S.pistolTaken) {
+      const pp = NBN.PLACES.pistolPickup;
+      ctx.fillStyle = '#ffe14d';
+      ctx.beginPath();
+      ctx.moveTo(x0 + pp.x * SCALE, y0 + pp.y * SCALE - 5);
+      ctx.lineTo(x0 + pp.x * SCALE + 5, y0 + pp.y * SCALE);
+      ctx.lineTo(x0 + pp.x * SCALE, y0 + pp.y * SCALE + 5);
+      ctx.lineTo(x0 + pp.x * SCALE - 5, y0 + pp.y * SCALE);
+      ctx.closePath();
       ctx.fill();
     }
     // Player: white arrow.
