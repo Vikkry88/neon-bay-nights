@@ -1,5 +1,7 @@
 // Neon Bay Nights — config.js
-// One job: every constant the rest of the game shares.
+// One job: every number the rest of the game shares, in one place.
+// Round 3 tuning: police rams are rare and gentle, steering works at
+// walking pace, traffic can never jam an intersection for long.
 (function () {
   'use strict';
 
@@ -12,33 +14,47 @@
     STREET: 96,
     BEACH_X: 2920, // sand starts here
     WATER_X: 3100, // water starts here
-    // Player
+    // Player on foot
     WALK_SPEED: 190,
     SPRINT_MULT: 1.55,
     PLAYER_RADIUS: 14,
     PLAYER_HEALTH: 100,
-    // Cars
+    // Cars — steering stays strong at low speed so a 90-degree turn at
+    // 5-8 mph takes about a second of steering, not dozens of key taps.
     CAR_LENGTH: 46,
     CAR_WIDTH: 24,
-    CAR_ACCEL: 420,
+    CAR_ACCEL: 520,
     CAR_MAX_SPEED: 460,
     CAR_REVERSE_MAX: 150,
-    CAR_TURN: 2.9,
-    STEAL_RADIUS: 120, // generous steal prompt radius
-    ENTER_COOLDOWN: 0.7, // seconds after stealing/exiting before E works again
-    TRAFFIC_MAX: 28, // traffic cars alive at once (the world is 3200x3200)
+    CAR_TURN: 3.4,
+    CAR_TURN_FLOOR: 0.6, // turn rate never drops below 60% of full
+    STEAL_RADIUS: 120,
+    ENTER_COOLDOWN: 0.6, // seconds after stealing/exiting before E works again
+    TRAFFIC_MAX: 28, // traffic cars alive at once
     TRAFFIC_TOPUP: 1.5, // per-second chance to replace a missing traffic car
-    PARKED_CARS: 14, // parked cars to steal, plus the mission-4 coupe
+    PARKED_CARS: 14,
+    // Police rams — the round-2 grind fix. A ram is a rare shove, never a
+    // shredder: one ram per 3.5s across ALL cruisers, only when the player's
+    // car is actually moving, small car-only damage, and the cruiser backs
+    // off and holds its distance afterwards instead of gluing to the bumper.
+    RAM_CAR_DAMAGE: 1,
+    RAM_COOLDOWN: 4.0, // seconds before one cruiser may ram again
+    RAM_GATE_SECONDS: 3.5, // one ram per 3.5s across ALL cruisers
+    RAM_BACKOFF_SECONDS: 2.5, // a cruiser reverses away this long after ramming
+    RAM_HOLD_SECONDS: 3.0, // ...then holds at a distance this long
+    RAM_HOLD_DIST: 130, // cruisers that may not ram yet hold at this distance
+    RAM_MIN_PLAYER_SPEED: 30, // rams only land on a moving car
+    RAM_RANGE: 52, // how close a cruiser must be to ram
+    POLICE_SEPARATION: 46, // a cruiser is never allowed inside this of the player's car
     // Combat / damage (capped so one hit can never gut the player)
     TRAFFIC_HIT_DAMAGE: 4,
-    RAM_CAR_DAMAGE: 1, // car condition lost per ram (rams hurt the CAR, not the driver)
-    RAM_COOLDOWN: 2.0, // seconds before one cruiser may ram again
-    RAM_GATE_SECONDS: 1.5, // one ram per 1.5s across ALL cruisers
-    RAM_BACKOFF_SECONDS: 1.6, // a cruiser reverses away this long after ramming
-    RAM_HOLD_DIST: 80, // cruisers that may not ram yet hold at this distance
     BULLET_DAMAGE: 8,
     PUNCH_DAMAGE: 12,
     HIT_COOLDOWN: 0.7, // seconds between damage ticks from one source
+    // Traffic jams — a car that makes no progress for 5s is in a jam that
+    // will never clear, so it turns around or respawns instead of sitting.
+    TRAFFIC_STUCK_SECONDS: 5,
+    TRAFFIC_BLOCKED_SECONDS: 3, // blocked by a stopped car this long: U-turn
     // Wanted
     WANTED_DECAY_SECONDS: 14, // quiet seconds per star lost
     COP_CAR_MIN_DIST_ON_FOOT: 58, // a cruiser may never rest on the on-foot player
@@ -95,16 +111,18 @@
     },
   ];
 
-  // Key places in the city (world coordinates).
+  // Key places in the city (world coordinates). Every mission target sits
+  // ON a street (or the beach), never inside a block: a target a driver
+  // cannot reach by a clear street path is a target that cannot be done.
   NBN.PLACES = {
     spawnPark: { x: 600, y: 1000 }, // safe spawn: a park, away from traffic
-    garage: { x: 1200, y: 600 }, // on the x=1200 street: the old spot sat inside a building
-    saltAirBar: { x: 2960, y: 1600 },
-    safehouse: { x: 600, y: 2400 }, // on the y=2400 street: the old spot sat inside a building
-    vault: { x: 1600, y: 1400 },
-    ricoPickup: { x: 2200, y: 2200 },
-    coupeLot: { x: 1000, y: 2000 },
-    pistolPickup: { x: 1400, y: 760 },
+    garage: { x: 1200, y: 600 }, // on the x=1200 street
+    saltAirBar: { x: 2960, y: 1600 }, // beach, on the y=1600 street
+    safehouse: { x: 600, y: 2400 }, // on the y=2400 street
+    vault: { x: 1600, y: 1400 }, // on the x=1600 street
+    ricoPickup: { x: 2000, y: 2200 }, // on the x=2000 street (was inside a park block)
+    coupeLot: { x: 1000, y: 2000 }, // on the y=2000 street
+    pistolPickup: { x: 1200, y: 800 }, // on the x=1200 street, just south of the garage — on the player's path, never behind a building corner
   };
 
   NBN.MISSION_INTRO = 'Marla Voss: ';

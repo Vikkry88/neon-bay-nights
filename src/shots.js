@@ -36,7 +36,7 @@
       p.wanted = 3;
       p.lastCrime = S.time;
       for (let i = 0; i < 3; i++) {
-        const c = NBN.world.makeCar(car.x - 120 - i * 70, car.y + 60 + i * 40, 0, 'police', '#1c2a4a');
+        const c = NBN.world.makeCar(car.x - 120 - i * 70, car.y + 60 + i * 40, 0, 'police', '#f2f2f2');
         c.speed = 300;
         S.cars.push(c);
       }
@@ -69,7 +69,7 @@
       p.wanted = 4;
       p.lastCrime = S.time;
       for (let i = 0; i < 3; i++) {
-        const c = NBN.world.makeCar(p.x + 140 + i * 80, p.y - 60 + i * 50, Math.PI, 'police', '#1c2a4a');
+        const c = NBN.world.makeCar(p.x + 140 + i * 80, p.y - 60 + i * 50, Math.PI, 'police', '#f2f2f2');
         c.speed = 200;
         S.cars.push(c);
       }

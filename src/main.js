@@ -93,6 +93,10 @@
       if (M.failed) screen = 'failed';
     } else if (screen === 'paused') {
       drawPaused();
+      // Silence the engine hum and siren while paused — the world is not
+      // updating, so the last gain would drone on forever otherwise.
+      NBN.audio.setEngine(0, false);
+      NBN.audio.setSiren(false);
       if (NBN.input.hit('KeyP') || NBN.input.hit('Escape') || NBN.input.hit('Enter')) screen = 'playing';
       NBN.input.endFrame();
       return;

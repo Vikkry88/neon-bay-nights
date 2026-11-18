@@ -1,6 +1,16 @@
 // Neon Bay Nights — render.js
 // One job: draw the world — ground, streets, beach, buildings, cars,
 // pedestrians, police, particles, markers and the player.
+//
+// Round 3 polish, from what the browser playtests showed:
+// - Place labels sit BELOW their zones (the beacon label sits above), so
+//   they can never stack on each other or hide behind the car health bar.
+// - Police are unmistakable: white body, black hood and trunk, a big
+//   flashing light bar, POLICE on the side, and a red/blue glow halo.
+// - The player's car shows its front clearly: bright windshield, headlight
+//   cones and a hood chevron — never just taillights.
+// - Traffic cars show NO health bars (only the player's own car does).
+// - The pistol pickup is a tall glowing beacon, not a small box.
 (function () {
   'use strict';
 
@@ -162,29 +172,33 @@
     }
   }
 
+  // A label with a solid dark backing, drawn BELOW its anchor so it never
+  // stacks on the mission beacon label above or the car health bar.
+  function placeLabel(ctx, x, y, text, color) {
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'center';
+    const w = ctx.measureText(text).width + 18;
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
+    ctx.fillRect(x - w / 2, y + 52, w, 22);
+    ctx.fillStyle = color;
+    ctx.fillText(text, x, y + 68);
+  }
+
   function drawPlaces(ctx) {
     const P = NBN.PLACES;
     const M = NBN.missions.getState();
-    const label = (x, y, text, color) => {
-      ctx.font = 'bold 13px sans-serif';
-      ctx.textAlign = 'center';
-      const w = ctx.measureText(text).width + 16;
-      ctx.fillStyle = 'rgba(0,0,0,0.55)';
-      ctx.fillRect(x - w / 2, y - 34, w, 20);
-      ctx.fillStyle = color;
-      ctx.fillText(text, x, y - 20);
-    };
+    const S = NBN.world.getState();
     // Garage zone.
     ctx.strokeStyle = '#ffe14d';
     ctx.lineWidth = 3;
     ctx.setLineDash([10, 8]);
     ctx.strokeRect(P.garage.x - 55, P.garage.y - 45, 110, 90);
     ctx.setLineDash([]);
-    label(P.garage.x, P.garage.y - 50, 'GARAGE', '#ffe14d');
+    placeLabel(ctx, P.garage.x, P.garage.y, 'GARAGE', '#ffe14d');
     // Safehouse.
     ctx.strokeStyle = '#7CFF6B';
     ctx.strokeRect(P.safehouse.x - 45, P.safehouse.y - 45, 90, 90);
-    label(P.safehouse.x, P.safehouse.y - 50, 'SAFEHOUSE', '#7CFF6B');
+    placeLabel(ctx, P.safehouse.x, P.safehouse.y, 'SAFEHOUSE', '#7CFF6B');
     // Salt Air bar on the beach.
     ctx.fillStyle = '#c96a3b';
     ctx.fillRect(P.saltAirBar.x - 40, P.saltAirBar.y - 26, 80, 52);
@@ -198,15 +212,29 @@
     ctx.fillStyle = '#ffe14d';
     ctx.font = 'bold 12px sans-serif';
     ctx.fillText('BAY TRUST', P.vault.x, P.vault.y + 4);
-    // Pistol pickup.
-    const S = NBN.world.getState();
+    // Pistol pickup: a tall glowing beacon, impossible to miss.
     if (!S.pistolTaken) {
       const bob = Math.sin(S.time * 3) * 3;
+      const pulse = 0.55 + Math.sin(S.time * 4) * 0.25;
+      // Light pillar.
+      const g = ctx.createLinearGradient(P.pistolPickup.x, P.pistolPickup.y - 90, P.pistolPickup.x, P.pistolPickup.y);
+      g.addColorStop(0, 'rgba(255,225,77,0)');
+      g.addColorStop(1, `rgba(255,225,77,${pulse * 0.5})`);
+      ctx.fillStyle = g;
+      ctx.fillRect(P.pistolPickup.x - 10, P.pistolPickup.y - 90, 20, 90);
+      // Pulsing ring on the ground.
+      ctx.strokeStyle = `rgba(255,225,77,${pulse})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(P.pistolPickup.x, P.pistolPickup.y, 26 + Math.sin(S.time * 4) * 4, 0, Math.PI * 2);
+      ctx.stroke();
+      // The pistol itself.
       ctx.fillStyle = '#222';
       ctx.fillRect(P.pistolPickup.x - 12, P.pistolPickup.y - 4 + bob, 24, 8);
       ctx.fillStyle = '#ffe14d';
-      ctx.font = 'bold 11px sans-serif';
-      ctx.fillText('PISTOL', P.pistolPickup.x, P.pistolPickup.y - 12 + bob);
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('PISTOL', P.pistolPickup.x, P.pistolPickup.y - 34 + bob);
     }
     // Mission target beacon.
     if (M.active && M.active.target) {
@@ -224,26 +252,76 @@
       ctx.lineTo(t.x + 10, t.y - 30);
       ctx.closePath();
       ctx.fill();
-      label(t.x, t.y - 58, M.active.target.label.toUpperCase(), '#ff2e88');
+      ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'center';
+      const w = ctx.measureText(M.active.target.label.toUpperCase()).width + 18;
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillRect(t.x - w / 2, t.y - 78, w, 22);
+      ctx.fillStyle = '#ff2e88';
+      ctx.fillText(M.active.target.label.toUpperCase(), t.x, t.y - 62);
     }
   }
 
   function drawCar(ctx, c) {
+    const isPolice = c.kind === 'police';
+    // Police glow halo: a red/blue pulse under the car, visible at a glance.
+    if (isPolice) {
+      const t = NBN.world.getState().time;
+      const red = Math.sin(t * 10) > 0;
+      ctx.fillStyle = red ? 'rgba(255,46,46,0.30)' : 'rgba(46,123,255,0.30)';
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, 36, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.save();
     ctx.translate(c.x, c.y);
     ctx.rotate(c.angle);
     // Shadow.
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
     ctx.fillRect(-CFG.CAR_LENGTH / 2 + 3, -CFG.CAR_WIDTH / 2 + 4, CFG.CAR_LENGTH, CFG.CAR_WIDTH);
-    // Body.
-    ctx.fillStyle = c.color;
+    // Body: police are always black-and-white; everyone else keeps their color.
+    ctx.fillStyle = isPolice ? '#f2f2f2' : c.color;
     ctx.beginPath();
     ctx.roundRect(-CFG.CAR_LENGTH / 2, -CFG.CAR_WIDTH / 2, CFG.CAR_LENGTH, CFG.CAR_WIDTH, 7);
     ctx.fill();
-    // Cabin + windshield.
+    if (isPolice) {
+      // Black hood and trunk — the classic black-and-white.
+      ctx.fillStyle = '#111318';
+      ctx.fillRect(CFG.CAR_LENGTH / 2 - 13, -CFG.CAR_WIDTH / 2, 13, CFG.CAR_WIDTH);
+      ctx.fillRect(-CFG.CAR_LENGTH / 2, -CFG.CAR_WIDTH / 2, 12, CFG.CAR_WIDTH);
+    }
+    // Cabin + bright windshield at the FRONT, so the facing is readable.
+    ctx.fillStyle = isPolice ? 'rgba(20,30,45,0.9)' : '#bfe8ff';
+    ctx.beginPath();
+    ctx.roundRect(2, -CFG.CAR_WIDTH / 2 + 4, 12, CFG.CAR_WIDTH - 8, 3);
+    ctx.fill();
     ctx.fillStyle = 'rgba(20,30,45,0.85)';
     ctx.beginPath();
-    ctx.roundRect(-8, -CFG.CAR_WIDTH / 2 + 4, 16, CFG.CAR_WIDTH - 8, 4);
+    ctx.roundRect(-10, -CFG.CAR_WIDTH / 2 + 4, 10, CFG.CAR_WIDTH - 8, 3);
+    ctx.fill();
+    // Headlight cones: pale beams forward, so the front is unmistakable.
+    ctx.fillStyle = 'rgba(255,248,192,0.35)';
+    ctx.beginPath();
+    ctx.moveTo(CFG.CAR_LENGTH / 2, -CFG.CAR_WIDTH / 2 + 4);
+    ctx.lineTo(CFG.CAR_LENGTH / 2 + 22, -CFG.CAR_WIDTH / 2 - 2);
+    ctx.lineTo(CFG.CAR_LENGTH / 2 + 22, -2);
+    ctx.lineTo(CFG.CAR_LENGTH / 2, -2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(CFG.CAR_LENGTH / 2, 2);
+    ctx.lineTo(CFG.CAR_LENGTH / 2 + 22, 2);
+    ctx.lineTo(CFG.CAR_LENGTH / 2 + 22, CFG.CAR_WIDTH / 2 + 2);
+    ctx.lineTo(CFG.CAR_LENGTH / 2, CFG.CAR_WIDTH / 2 - 4);
+    ctx.closePath();
+    ctx.fill();
+    // Hood chevron pointing forward.
+    ctx.fillStyle = isPolice ? '#111318' : 'rgba(255,255,255,0.85)';
+    ctx.beginPath();
+    ctx.moveTo(CFG.CAR_LENGTH / 2 - 8, 0);
+    ctx.lineTo(CFG.CAR_LENGTH / 2 - 16, -6);
+    ctx.lineTo(CFG.CAR_LENGTH / 2 - 16, 6);
+    ctx.closePath();
     ctx.fill();
     // Headlights / taillights.
     ctx.fillStyle = '#fff8c0';
@@ -252,20 +330,18 @@
     ctx.fillStyle = '#ff3b30';
     ctx.fillRect(-CFG.CAR_LENGTH / 2, -CFG.CAR_WIDTH / 2 + 3, 3, 5);
     ctx.fillRect(-CFG.CAR_LENGTH / 2, CFG.CAR_WIDTH / 2 - 8, 3, 5);
-    // Police livery + light bar.
-    if (c.kind === 'police') {
-      ctx.fillStyle = '#f2f2f2';
-      ctx.fillRect(-CFG.CAR_LENGTH / 2 + 8, -CFG.CAR_WIDTH / 2, CFG.CAR_LENGTH - 16, 5);
+    // Police livery: big flashing light bar + POLICE on the side.
+    if (isPolice) {
       const t = NBN.world.getState().time;
       const red = Math.sin(t * 10) > 0;
       ctx.fillStyle = red ? '#ff2e2e' : '#2e7bff';
-      ctx.fillRect(-4, -CFG.CAR_WIDTH / 2 - 3, 8, 5);
+      ctx.fillRect(-7, -CFG.CAR_WIDTH / 2 - 4, 14, 7);
       ctx.fillStyle = red ? '#2e7bff' : '#ff2e2e';
-      ctx.fillRect(4, -CFG.CAR_WIDTH / 2 - 3, 8, 5);
+      ctx.fillRect(7, -CFG.CAR_WIDTH / 2 - 4, 14, 7);
       ctx.fillStyle = '#111';
       ctx.font = 'bold 9px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('BAY PD', 0, 3);
+      ctx.fillText('POLICE', 0, 3);
     }
     // Damage smoke.
     if (c.health < 45) {
@@ -275,7 +351,7 @@
       ctx.fill();
     }
     ctx.restore();
-    // Health bar for the player's car.
+    // Health bar ONLY for the player's own car — traffic never shows one.
     if (c.kind === 'player' && c.health < 100) {
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.fillRect(c.x - 24, c.y - 34, 48, 6);
@@ -418,17 +494,21 @@
     }
     ctx.globalAlpha = 1;
     drawPlayer(ctx, S.player);
-    // Steal prompt.
+    // Steal prompt — solid backing and a border, readable over any road.
     if (!S.player.inCar && !S.over) {
       const car = NBN.world.nearestCar(CFG.STEAL_RADIUS);
       if (car) {
-        ctx.fillStyle = 'rgba(0,0,0,0.65)';
         const txt = car.coupe ? 'Press E — steal the yellow coupe' : 'Press E — steal car';
         ctx.font = 'bold 14px sans-serif';
-        const w = ctx.measureText(txt).width + 20;
-        ctx.fillRect(car.x - w / 2, car.y - 52, w, 24);
+        const w = ctx.measureText(txt).width + 24;
+        ctx.fillStyle = 'rgba(0,0,0,0.85)';
+        ctx.fillRect(car.x - w / 2, car.y - 52, w, 26);
+        ctx.strokeStyle = '#ffe14d';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(car.x - w / 2, car.y - 52, w, 26);
         ctx.fillStyle = '#ffe14d';
-        ctx.fillText(txt, car.x, car.y - 35);
+        ctx.textAlign = 'center';
+        ctx.fillText(txt, car.x, car.y - 34);
       }
     }
   }

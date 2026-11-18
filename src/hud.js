@@ -1,6 +1,11 @@
 // Neon Bay Nights — hud.js
-// One job: the HUD — wanted stars, cash, health, speed, objective text,
-// messages, mission banners and the red damage vignette.
+// One job: the HUD — wanted stars, cash, health, speed, objective text
+// (with distance to the objective), messages, mission banners and the
+// red damage vignette.
+//
+// Round 3 polish: the objective line shows how far away the target is,
+// and the controls hint moved up under the HEALTH panel — it used to sit
+// on top of the minimap in the bottom-right corner.
 (function () {
   'use strict';
 
@@ -45,7 +50,15 @@
     ctx.fillText('HEALTH', vw - 214, 32);
     drawBar(ctx, vw - 214, 38, 190, 12, p.health / CFG.PLAYER_HEALTH, p.health > 30 ? '#7CFF6B' : '#ff3b30');
     ctx.fillStyle = '#fff';
-    ctx.fillText(p.hasPistol ? `PISTOL  ${p.ammo} rounds` : 'PISTOL — by the garage', vw - 214, 72);
+    ctx.fillText(p.hasPistol ? `PISTOL  ${p.ammo} rounds` : 'PISTOL — pickup by the garage', vw - 214, 72);
+
+    // Controls hint, top-right under the HEALTH panel (it used to overlap
+    // the minimap in the bottom-right corner).
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(vw - 300, 96, 286, 22);
+    ctx.fillStyle = '#cfd2d8';
+    ctx.font = '12px sans-serif';
+    ctx.fillText('WASD drive · E steal · Space fight · P pause', vw - 292, 111);
 
     // Bottom-left: speed when driving.
     if (p.inCar) {
@@ -59,7 +72,7 @@
       ctx.fillText(`car ${Math.round(p.inCar.health)}%`, 26, vh - 26);
     }
 
-    // Objective line, top-center.
+    // Objective line, top-center — with the distance to the target.
     const obj = currentObjective();
     if (obj) {
       ctx.font = 'bold 15px sans-serif';
@@ -86,7 +99,7 @@
     if (S.messageT > 0 && S.message) {
       ctx.font = '15px sans-serif';
       const w = ctx.measureText(S.message).width + 28;
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
       ctx.fillRect((vw - w) / 2, vh - 110, w, 30);
       ctx.fillStyle = '#fff';
       ctx.textAlign = 'center';
@@ -135,13 +148,6 @@
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, vw, vh);
     }
-
-    // Controls hint, bottom-right.
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.fillRect(vw - 300, vh - 34, 286, 22);
-    ctx.fillStyle = '#cfd2d8';
-    ctx.font = '12px sans-serif';
-    ctx.fillText('WASD drive · E steal · Space fight · P pause', vw - 292, vh - 19);
   }
 
   function currentObjective() {
@@ -153,6 +159,12 @@
     if (d.id === 3 && m.stage === 1) text = 'Mission 3: The Getaway — lose the cops, then reach the safehouse';
     if (d.id === 4 && m.stage === 1) text = 'Mission 4: Repo Man — deliver the coupe to the garage, over 30% condition';
     if (d.id === 5 && m.stage === 1) text = 'Mission 5: The Bay Trust Job — lose the Bay PD, reach the safehouse';
+    // Distance to the objective, in meters (10 world px = 1 m).
+    if (m.target) {
+      const S = NBN.world.getState();
+      const meters = Math.round(NBN.dist(S.player.x, S.player.y, m.target.x, m.target.y) / 10);
+      text += `  ·  ${meters}m`;
+    }
     return text;
   }
 

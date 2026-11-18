@@ -1,11 +1,14 @@
 // Neon Bay Nights — random.js
-// One job: deterministic randomness and small math helpers.
+// One job: a small seeded PRNG so the city layout is stable, plus the
+// math helpers every other module reaches for.
 (function () {
   'use strict';
 
   const NBN = window.NBN;
 
-  // Mulberry32 — a tiny seeded PRNG so the city layout is stable per seed.
+  // Mulberry32 — a tiny seeded generator. The seed is fixed so the city
+  // builds the same way every load; gameplay randomness still varies
+  // because it draws from the same stream in play order.
   function makeRng(seed) {
     let a = seed >>> 0;
     return function () {
