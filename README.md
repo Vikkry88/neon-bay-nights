@@ -1,5 +1,9 @@
 # Neon Bay Nights
 
+[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![rank](https://make.fun/badge/gta6-01/Vikkry88/neon-bay-nights/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![reward](https://make.fun/badge/gta6-01/Vikkry88/neon-bay-nights/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+
 A 2D top-down open-world crime game for make.fun bounty gta6-01 ("Make GTA 6").
 All names, art and music are original — the fictional coastal city of Neon Bay,
 with fixer Marlowe handing out jobs. No third-party game assets are used.
