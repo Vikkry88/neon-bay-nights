@@ -1,54 +1,44 @@
-// Neon Bay Nights — minimap (bottom-right).
-import { missionTarget } from './missions.js';
+// Canvas minimap: streets, player, mission marker, police, garage.
+import { WORLD_W, WORLD_H } from './config.js';
 
-export function drawMinimap(ctx, canvas, state, city) {
-  const size = 168;
-  const x0 = canvas.width - size - 14;
-  const y0 = canvas.height - size - 14;
-  const scale = size / city.size;
+export function drawMinimap(ctx, state, mx, my, size) {
+  const sx = size / WORLD_W, sy = size / WORLD_H;
   ctx.save();
-  ctx.fillStyle = 'rgba(8,10,24,0.85)';
-  ctx.fillRect(x0 - 4, y0 - 4, size + 8, size + 8);
-  ctx.strokeStyle = '#5a628f';
-  ctx.strokeRect(x0 - 4, y0 - 4, size + 8, size + 8);
-  ctx.fillStyle = '#1c2138';
-  ctx.fillRect(x0, y0, size, size);
-  // Streets.
-  ctx.fillStyle = '#2c3358';
-  const step = city.block * scale;
-  for (let i = 0; i <= city.size / city.block; i++) {
-    ctx.fillRect(x0 + i * step - 2, y0, 4, size);
-    ctx.fillRect(x0, y0 + i * step - 2, size, 4);
-  }
-  // Garage.
-  ctx.fillStyle = '#ffe600';
-  ctx.fillRect(x0 + city.garage.x * scale - 3, y0 + city.garage.y * scale - 3, 6, 6);
-  // Police.
-  ctx.fillStyle = '#4fc3f7';
-  for (const c of state.world.cars) {
-    if (c.police && !c.dead) ctx.fillRect(x0 + c.x * scale - 2, y0 + c.y * scale - 2, 4, 4);
-  }
-  // Mission target (pulsing gold).
-  const target = missionTarget(state, city);
-  if (target) {
-    const pulse = 3 + Math.sin(state.time * 5) * 1.2;
-    ctx.fillStyle = '#ffd740';
-    ctx.beginPath();
-    ctx.arc(x0 + target.x * scale, y0 + target.y * scale, pulse + 2, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  // Player.
-  const pp = state.player.inCar || state.player;
-  ctx.fillStyle = '#ffffff';
-  ctx.beginPath();
-  ctx.arc(x0 + pp.x * scale, y0 + pp.y * scale, 4, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = '#ff2d95';
+  ctx.fillStyle = 'rgba(8,12,24,0.82)';
+  ctx.fillRect(mx, my, size, size);
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.strokeRect(mx, my, size, size);
+  // beach + water
+  ctx.fillStyle = '#14507d';
+  ctx.fillRect(mx, my + state.city.beachY * sy, size, size - state.city.beachY * sy);
+  ctx.fillStyle = '#e3c98a';
+  ctx.fillRect(mx, my + (state.city.beachY - 40) * sy, size, 40 * sy);
+  // roads
+  ctx.strokeStyle = 'rgba(200,210,230,0.55)';
   ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.fillStyle = '#cfd6ff';
-  ctx.font = '10px system-ui, sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText('NEON BAY', x0, y0 - 8);
+  for (const cx of state.city.xs) { ctx.beginPath(); ctx.moveTo(mx + cx * sx, my); ctx.lineTo(mx + cx * sx, my + size); ctx.stroke(); }
+  for (const cy of state.city.ys) { ctx.beginPath(); ctx.moveTo(mx, my + cy * sy); ctx.lineTo(mx + size, my + cy * sy); ctx.stroke(); }
+  // garage
+  ctx.fillStyle = '#facc15';
+  ctx.fillRect(mx + state.city.garage.x * sx - 3, my + state.city.garage.y * sy - 3, 6, 6);
+  // mission marker
+  if (state.marker) {
+    ctx.fillStyle = '#ff2e88';
+    ctx.beginPath(); ctx.arc(mx + state.marker.x * sx, my + state.marker.y * sy, 4, 0, 6.29); ctx.fill();
+  }
+  // police
+  ctx.fillStyle = '#3b82f6';
+  for (const c of state.police) {
+    if (c.dead) continue;
+    ctx.fillRect(mx + c.x * sx - 2, my + c.y * sy - 2, 4, 4);
+  }
+  // player
+  const p = state.player.inCar || state.player;
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#f59e0b';
+  ctx.beginPath(); ctx.arc(mx + p.x * sx, my + p.y * sy, 4, 0, 6.29); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.font = '10px monospace';
+  ctx.fillText('NEON BAY', mx + 4, my + 12);
   ctx.restore();
 }

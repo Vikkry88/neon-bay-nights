@@ -1,27 +1,14 @@
-// Neon Bay Nights — localStorage save.
-const KEY = 'neon-bay-nights-save-v1';
-
+// localStorage save: money + completed missions.
+import { SAVE_KEY } from './config.js';
 export function loadSave() {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    if (typeof data !== 'object' || data === null) return null;
-    return data;
-  } catch (e) {
-    return null;
-  }
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return { money: 250, done: [] };
+    const s = JSON.parse(raw);
+    return { money: Number(s.money) || 250, done: Array.isArray(s.done) ? s.done : [] };
+  } catch { return { money: 250, done: [] }; }
 }
-
-export function storeSave(state) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify({
-      money: Math.floor(state.money),
-      missionIdx: state.missionIdx,
-      health: Math.floor(state.health),
-      savedAt: Date.now(),
-    }));
-  } catch (e) {
-    // Storage may be unavailable (private mode); the game continues unsaved.
-  }
+export function writeSave(money, done) {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ money, done })); } catch { /* private mode */ }
 }
+export function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch { /* ignore */ } }

@@ -1,25 +1,21 @@
-// Neon Bay Nights — tuning constants.
-export const CFG = {
-  worldSize: 3200,
-  block: 320,
-  street: 112,
-  walkSpeed: 230,
-  carMax: 460,
-  carReverse: 170,
-  carAccel: 340,
-  carBrake: 420,
-  carDrag: 0.55,
-  trafficSpeed: 150,
-  policeSpeed: 380,
-  policeStandoff: 72,
-  policeBrakeDist: 130,
-  garage: { x: 0, y: 0 }, // filled by city (street point)
-  colors: {
-    ground: '#14182b',
-    street: '#232840',
-    streetLine: '#3d4670',
-    sidewalk: '#1c2138',
-    neon: ['#ff2d95', '#00e5ff', '#ffe600', '#7c4dff', '#00ffa3'],
-    car: ['#e53935', '#1e88e5', '#fdd835', '#8e24aa', '#00acc1', '#fb8c00', '#43a047', '#d81b60'],
-  },
+// Shared constants for Neon Bay Nights.
+export const WORLD_W = 2400;
+export const WORLD_H = 1800;
+export const ROAD_W = 110;
+export const BLOCK = 300;
+export const VIEW_W = 1280;
+export const VIEW_H = 720;
+export const PLAYER_R = 11;
+export const CAR_W = 44;
+export const CAR_H = 22;
+export const POLICE_STANDOFF = 72;
+export const RAM_GATE_MS = 1400;
+export const SAVE_KEY = 'neon-bay-nights-save-v1';
+export const COLORS = {
+  road: '#2b2f3a', roadLine: '#e8d44d', sidewalk: '#4a4f5e', grass: '#2e7d4f',
+  sand: '#e3c98a', water: '#1b6ca8', waterDeep: '#14507d',
+  building: ['#7a5c8f', '#5c7a9e', '#9e6b5c', '#5c9e7a', '#8f7a5c', '#6b5c9e'],
+  roof: '#3a3f4e', neon: ['#ff2e88', '#22d3ee', '#facc15', '#a3e635'],
+  police: '#1e3a8a', policeStripe: '#f8fafc', player: '#f59e0b',
 };
+export const TRAFFIC_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#eab308', '#a855f7', '#ec4899', '#f8fafc', '#64748b'];
