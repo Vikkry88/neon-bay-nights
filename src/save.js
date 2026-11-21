@@ -1,46 +1,27 @@
-// Neon Bay Nights — save.js
-// One job: persist progress (money, missions done) to localStorage.
-(function () {
-  'use strict';
+// Neon Bay Nights — localStorage save.
+const KEY = 'neon-bay-nights-save-v1';
 
-  const NBN = window.NBN;
-  const KEY = 'neon-bay-nights-save-v1';
-
-  function load() {
-    try {
-      const raw = window.localStorage.getItem(KEY);
-      if (!raw) return null;
-      const data = JSON.parse(raw);
-      if (typeof data !== 'object' || data === null) return null;
-      return {
-        money: typeof data.money === 'number' ? data.money : 0,
-        missionsDone: Array.isArray(data.missionsDone) ? data.missionsDone.filter((n) => typeof n === 'number') : [],
-        bestWanted: typeof data.bestWanted === 'number' ? data.bestWanted : 0,
-      };
-    } catch (err) {
-      return null;
-    }
+export function loadSave() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (typeof data !== 'object' || data === null) return null;
+    return data;
+  } catch (e) {
+    return null;
   }
+}
 
-  function save(state) {
-    try {
-      const data = {
-        money: Math.floor(state.player ? state.player.money : state.money || 0),
-        missionsDone: (state.missionsDone || []).slice(),
-        bestWanted: state.bestWanted || 0,
-      };
-      window.localStorage.setItem(KEY, JSON.stringify(data));
-      return true;
-    } catch (err) {
-      return false;
-    }
+export function storeSave(state) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify({
+      money: Math.floor(state.money),
+      missionIdx: state.missionIdx,
+      health: Math.floor(state.health),
+      savedAt: Date.now(),
+    }));
+  } catch (e) {
+    // Storage may be unavailable (private mode); the game continues unsaved.
   }
-
-  function clear() {
-    try {
-      window.localStorage.removeItem(KEY);
-    } catch (err) { /* storage unavailable; play on without it */ }
-  }
-
-  NBN.save = { load, save, clear };
-})();
+}

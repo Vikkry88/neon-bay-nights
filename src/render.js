@@ -1,586 +1,293 @@
-// Neon Bay Nights — render.js
-// One job: draw the world — ground, streets, beach, buildings, cars,
-// pedestrians, police, particles, markers and the player.
-//
-// Polish rules learned from the browser playtests:
-// - Place labels sit BELOW their zones (the beacon label sits above), so
-//   they can never stack on each other or hide behind the car health bar.
-//   GARAGE and PISTOL sit only 200px apart on the same street, so their
-//   labels are STAGGERED to different heights and never overlap.
-// - Police are unmistakable: white body, black hood and trunk, a big
-//   flashing light bar, POLICE on the side, and a red/blue glow halo.
-// - The player's car shows its front clearly: bright windshield, headlight
-//   cones and a hood chevron, plus a yellow direction arrow at the nose.
-// - Traffic cars show NO health bars (only the player's own car does).
-// - The pistol pickup is a tall glowing beacon, not a small box.
-// - Bullets draw a LONG bright tracer and the muzzle flash is big and
-//   long-lived, so a shot is unmistakable even in a still screenshot.
-(function () {
-  'use strict';
+// Neon Bay Nights — world rendering.
+// Label rules: world labels never overlap each other and never draw under the HUD.
+import { CFG } from './config.js';
+import { missionTarget } from './missions.js';
 
-  const NBN = window.NBN;
-  const CFG = NBN.CFG;
-  const PAL = NBN.PALETTE;
-
-  function drawGround(ctx, cam, vw, vh) {
-    const x0 = Math.max(0, cam.x - vw / 2 - 40);
-    const y0 = Math.max(0, cam.y - vh / 2 - 40);
-    const x1 = Math.min(CFG.WORLD, cam.x + vw / 2 + 40);
-    const y1 = Math.min(CFG.WORLD, cam.y + vh / 2 + 40);
-    // Grass base.
-    ctx.fillStyle = PAL.grass;
-    ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
-    // Sand strip, then water.
-    ctx.fillStyle = PAL.sand;
-    ctx.fillRect(Math.max(x0, CFG.BEACH_X), y0, Math.min(x1, CFG.WATER_X) - Math.max(x0, CFG.BEACH_X), y1 - y0);
-    ctx.fillStyle = PAL.water;
-    ctx.fillRect(Math.max(x0, CFG.WATER_X), y0, x1 - Math.max(x0, CFG.WATER_X), y1 - y0);
-    // Water shimmer lines.
-    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-    ctx.lineWidth = 2;
-    const t = NBN.world.getState().time;
-    for (let y = Math.floor(y0 / 90) * 90; y < y1; y += 90) {
-      const off = Math.sin(t * 1.4 + y * 0.05) * 8;
-      ctx.beginPath();
-      ctx.moveTo(Math.max(x0, CFG.WATER_X) + 10, y + off);
-      ctx.lineTo(x1, y + off);
-      ctx.stroke();
-    }
-    // Streets: asphalt strips on the grid.
-    ctx.fillStyle = PAL.road;
-    for (let k = 0; k <= CFG.WORLD / CFG.GRID; k++) {
-      const c = k * CFG.GRID;
-      ctx.fillRect(x0, c - CFG.STREET / 2, x1 - x0, CFG.STREET);
-      ctx.fillRect(c - CFG.STREET / 2, y0, CFG.STREET, y1 - y0);
-    }
-    // Sidewalk edges.
-    ctx.fillStyle = PAL.sidewalk;
-    for (let k = 0; k <= CFG.WORLD / CFG.GRID; k++) {
-      const c = k * CFG.GRID;
-      ctx.fillRect(x0, c - CFG.STREET / 2 - 6, x1 - x0, 6);
-      ctx.fillRect(x0, c + CFG.STREET / 2, x1 - x0, 6);
-      ctx.fillRect(c - CFG.STREET / 2 - 6, y0, 6, y1 - y0);
-      ctx.fillRect(c + CFG.STREET / 2, y0, 6, y1 - y0);
-    }
-    // Center dashes.
-    ctx.strokeStyle = PAL.roadLine;
+function drawCar(ctx, car, t) {
+  ctx.save();
+  ctx.translate(car.x, car.y);
+  ctx.rotate(car.angle);
+  if (car.missionCar) {
+    ctx.strokeStyle = '#ffd740';
     ctx.lineWidth = 3;
-    ctx.setLineDash([26, 30]);
-    for (let k = 0; k <= CFG.WORLD / CFG.GRID; k++) {
-      const c = k * CFG.GRID;
-      ctx.beginPath();
-      ctx.moveTo(x0, c);
-      ctx.lineTo(x1, c);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(c, y0);
-      ctx.lineTo(c, y1);
-      ctx.stroke();
-    }
-    ctx.setLineDash([]);
-    // Crosswalks at intersections.
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    for (let kx = 1; kx < CFG.WORLD / CFG.GRID; kx++) {
-      for (let ky = 1; ky < CFG.WORLD / CFG.GRID; ky++) {
-        const cx = kx * CFG.GRID;
-        const cy = ky * CFG.GRID;
-        if (cx < x0 - 60 || cx > x1 + 60 || cy < y0 - 60 || cy > y1 + 60) continue;
-        for (let i = -2; i <= 2; i++) {
-          ctx.fillRect(cx + i * 14 - 4, cy - CFG.STREET / 2 + 4, 8, 14);
-          ctx.fillRect(cx + i * 14 - 4, cy + CFG.STREET / 2 - 18, 8, 14);
-        }
+    ctx.strokeRect(-24, -14, 48, 28);
+  }
+  ctx.fillStyle = car.dead ? '#333344' : car.color;
+  ctx.fillRect(-22, -11, 44, 22);
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fillRect(-10, -9, 18, 18);
+  ctx.fillStyle = '#0b0e1a';
+  ctx.fillRect(-18, -13, 8, 4);
+  ctx.fillRect(10, -13, 8, 4);
+  ctx.fillRect(-18, 9, 8, 4);
+  ctx.fillRect(10, 9, 8, 4);
+  if (car.police) {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(-8, -11, 16, 22);
+    const blink = Math.floor(t * 6) % 2 === 0;
+    ctx.fillStyle = blink ? '#ff1744' : '#2979ff';
+    ctx.fillRect(-4, -4, 8, 8);
+    ctx.fillStyle = blink ? 'rgba(255,23,68,0.25)' : 'rgba(41,121,255,0.25)';
+    ctx.beginPath();
+    ctx.arc(0, 0, 30, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    ctx.fillStyle = '#fff9c4';
+    ctx.fillRect(20, -8, 3, 5);
+    ctx.fillRect(20, 3, 3, 5);
+  }
+  ctx.restore();
+}
+
+export function drawWorld(ctx, canvas, state, city) {
+  const cam = state.cam;
+  const t = state.time;
+  ctx.save();
+  ctx.fillStyle = CFG.colors.ground;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.translate(-cam.x, -cam.y);
+
+  // Streets.
+  ctx.fillStyle = CFG.colors.street;
+  const m = city.block;
+  const s = city.street;
+  for (let i = 0; i <= city.size / m; i++) {
+    ctx.fillRect(i * m - s / 2, 0, s, city.size);
+    ctx.fillRect(0, i * m - s / 2, city.size, s);
+  }
+  ctx.strokeStyle = CFG.colors.streetLine;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([18, 22]);
+  for (let i = 0; i <= city.size / m; i++) {
+    ctx.beginPath();
+    ctx.moveTo(i * m, 0);
+    ctx.lineTo(i * m, city.size);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, i * m);
+    ctx.lineTo(city.size, i * m);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // Parks.
+  for (const p of city.parks) {
+    ctx.fillStyle = '#173d2a';
+    ctx.fillRect(p.x, p.y, p.w, p.h);
+  }
+  // Buildings.
+  const shades = ['#2b3050', '#33284d', '#243447', '#3d2c3a', '#2a3a33', '#38304a'];
+  for (const b of city.buildings) {
+    ctx.fillStyle = shades[b.hue % shades.length];
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.strokeRect(b.x, b.y, b.w, b.h);
+    ctx.fillStyle = 'rgba(255,230,120,0.5)';
+    const cols = Math.max(2, Math.floor(b.w / 26));
+    const rows = Math.max(2, Math.floor(b.h / 26));
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if ((r * 7 + c * 13 + b.hue) % 3 === 0) ctx.fillRect(b.x + 8 + c * 24, b.y + 8 + r * 24, 8, 8);
       }
     }
   }
-
-  function drawParksAndTrees(ctx, cam, vw, vh) {
-    const S = NBN.world.getState();
-    // Parks: softer grass + a pond.
-    ctx.fillStyle = PAL.parkGrass;
-    for (const key of ['1,2', '5,5', '2,6']) {
-      const [cx, cy] = key.split(',').map(Number);
-      const x0 = cx * CFG.GRID + CFG.STREET / 2;
-      const y0 = cy * CFG.GRID + CFG.STREET / 2;
-      ctx.fillRect(x0, y0, CFG.GRID - CFG.STREET, CFG.GRID - CFG.STREET);
-    }
-    // Trees.
-    for (const tr of NBN.city.trees) {
-      if (Math.abs(tr.x - cam.x) > vw / 2 + 60 || Math.abs(tr.y - cam.y) > vh / 2 + 60) continue;
-      ctx.fillStyle = 'rgba(0,0,0,0.25)';
-      ctx.beginPath();
-      ctx.ellipse(tr.x + 4, tr.y + 5, tr.r, tr.r * 0.8, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#2f7a33';
-      ctx.beginPath();
-      ctx.arc(tr.x, tr.y, tr.r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#4caf50';
-      ctx.beginPath();
-      ctx.arc(tr.x - 3, tr.y - 3, tr.r * 0.6, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    // Boardwalk lamps.
-    for (const l of NBN.city.lamps) {
-      if (Math.abs(l.x - cam.x) > vw / 2 + 40 || Math.abs(l.y - cam.y) > vh / 2 + 40) continue;
-      ctx.fillStyle = '#222';
-      ctx.fillRect(l.x - 2, l.y - 8, 4, 16);
-      ctx.fillStyle = '#ffe14d';
-      ctx.beginPath();
-      ctx.arc(l.x, l.y - 10, 5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    // Traffic lights.
-    const t = S.time;
-    for (const l of NBN.city.lights) {
-      if (Math.abs(l.x - cam.x) > vw / 2 + 40 || Math.abs(l.y - cam.y) > vh / 2 + 40) continue;
-      const ewGreen = NBN.city.lightGreen(l, t);
-      ctx.fillStyle = '#1c1c22';
-      ctx.fillRect(l.x - 16, l.y - 16, 10, 26);
-      ctx.fillStyle = ewGreen ? '#37e05c' : '#e03737';
-      ctx.beginPath();
-      ctx.arc(l.x - 11, l.y - 9, 3.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = ewGreen ? '#e03737' : '#37e05c';
-      ctx.beginPath();
-      ctx.arc(l.x - 11, l.y + 1, 3.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
+  // Neon signs.
+  ctx.font = 'bold 13px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  for (const sign of city.signs) {
+    ctx.fillStyle = sign.color;
+    ctx.globalAlpha = 0.75 + Math.sin(t * 2 + sign.x) * 0.2;
+    ctx.fillText(sign.text, sign.x, sign.y);
   }
+  ctx.globalAlpha = 1;
 
-  function drawBuildings(ctx, cam, vw, vh) {
-    for (const b of NBN.city.buildings) {
-      if (b.x + b.w < cam.x - vw / 2 - 60 || b.x > cam.x + vw / 2 + 60 || b.y + b.h < cam.y - vh / 2 - 60 || b.y > cam.y + vh / 2 + 60) continue;
-      // Drop shadow for a little height.
-      ctx.fillStyle = 'rgba(0,0,0,0.28)';
-      ctx.fillRect(b.x + 8, b.y + 10, b.w, b.h);
-      ctx.fillStyle = b.wall;
-      ctx.fillRect(b.x, b.y, b.w, b.h);
-      ctx.fillStyle = b.roof;
-      ctx.fillRect(b.x + 6, b.y + 6, b.w - 12, b.h - 12);
-      // Windows.
-      ctx.fillStyle = 'rgba(255,240,180,0.5)';
-      const stepX = 26;
-      const stepY = 24;
-      for (let wx = b.x + 16; wx < b.x + b.w - 14; wx += stepX) {
-        for (let wy = b.y + 16; wy < b.y + b.h - 14; wy += stepY) {
-          ctx.fillRect(wx, wy, 10, 8);
-        }
-      }
-      // Neon sign on some roofs.
-      if (b.neon && b.sign) {
-        ctx.fillStyle = b.neon;
-        ctx.font = 'bold 13px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('NEON', b.x + b.w / 2, b.y + b.h / 2);
-      }
-    }
-  }
+  // Garage yellow ring.
+  const g = city.garage;
+  ctx.strokeStyle = '#ffe600';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.arc(g.x, g.y, 52, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,230,0,0.10)';
+  ctx.beginPath();
+  ctx.arc(g.x, g.y, 52, 0, Math.PI * 2);
+  ctx.fill();
 
-  // Clamp a world-space label rect into the safe screen area (below the top
-  // HUD, above the minimap, inside the viewport) and return the clamped
-  // world top-left. Labels near a viewport edge used to slide under the
-  // HEALTH panel or the minimap.
-  function clampLabelRect(wx, wy, w, h, cam, vw, vh) {
-    let sx = wx - cam.x + vw / 2;
-    let sy = wy - cam.y + vh / 2;
-    sx = NBN.clamp(sx, 8, vw - w - 8);
-    sy = NBN.clamp(sy, 124, vh - 250);
-    return { x: sx + cam.x - vw / 2, y: sy + cam.y - vh / 2 };
-  }
-
-  // A label with a solid dark backing, drawn at a chosen offset from its
-  // anchor. The `dy` stagger is what keeps the GARAGE label (below its
-  // zone) from ever landing on the PISTOL label (above its beacon): the two
-  // places are only 200px apart on the same street.
-  function placeLabel(ctx, x, y, text, color, cam, vw, vh, dy) {
-    ctx.font = 'bold 13px sans-serif';
-    ctx.textAlign = 'center';
-    const w = ctx.measureText(text).width + 18;
-    const at = clampLabelRect(x - w / 2, y + dy, w, 22, cam, vw, vh);
-    ctx.fillStyle = 'rgba(0,0,0,0.75)';
-    ctx.fillRect(at.x, at.y, w, 22);
-    ctx.fillStyle = color;
-    ctx.fillText(text, at.x + w / 2, at.y + 16);
-  }
-
-  function drawPlaces(ctx, cam, vw, vh) {
-    const P = NBN.PLACES;
-    const M = NBN.missions.getState();
-    const S = NBN.world.getState();
-    // Garage zone — yellow ring, matching the banner text colour.
-    ctx.strokeStyle = '#ffe14d';
+  // Mission target marker.
+  const target = missionTarget(state, city);
+  if (target) {
+    const pulse = 26 + Math.sin(t * 5) * 6;
+    ctx.strokeStyle = '#ffd740';
     ctx.lineWidth = 3;
-    ctx.setLineDash([10, 8]);
-    ctx.strokeRect(P.garage.x - 55, P.garage.y - 45, 110, 90);
-    ctx.setLineDash([]);
-    // GARAGE label BELOW its zone (dy +52); the PISTOL label sits ABOVE its
-    // beacon, so the two never share a row.
-    placeLabel(ctx, P.garage.x, P.garage.y, 'GARAGE', '#ffe14d', cam, vw, vh, 52);
-    // Safehouse.
-    ctx.strokeStyle = '#7CFF6B';
-    ctx.strokeRect(P.safehouse.x - 45, P.safehouse.y - 45, 90, 90);
-    placeLabel(ctx, P.safehouse.x, P.safehouse.y, 'SAFEHOUSE', '#7CFF6B', cam, vw, vh, 52);
-    // Salt Air bar on the beach.
-    ctx.fillStyle = '#c96a3b';
-    ctx.fillRect(P.saltAirBar.x - 40, P.saltAirBar.y - 26, 80, 52);
-    ctx.fillStyle = '#22e6ff';
-    ctx.font = 'bold 12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('SALT AIR', P.saltAirBar.x, P.saltAirBar.y + 4);
-    // Bay Trust vault.
-    ctx.fillStyle = '#8a6d3b';
-    ctx.fillRect(P.vault.x - 44, P.vault.y - 30, 88, 60);
-    ctx.fillStyle = '#ffe14d';
-    ctx.font = 'bold 12px sans-serif';
-    ctx.fillText('BAY TRUST', P.vault.x, P.vault.y + 4);
-    // Pistol pickup: a tall glowing beacon, impossible to miss.
-    if (!S.pistolTaken) {
-      const bob = Math.sin(S.time * 3) * 3;
-      const pulse = 0.55 + Math.sin(S.time * 4) * 0.25;
-      // Light pillar.
-      const g = ctx.createLinearGradient(P.pistolPickup.x, P.pistolPickup.y - 90, P.pistolPickup.x, P.pistolPickup.y);
-      g.addColorStop(0, 'rgba(255,225,77,0)');
-      g.addColorStop(1, `rgba(255,225,77,${pulse * 0.5})`);
-      ctx.fillStyle = g;
-      ctx.fillRect(P.pistolPickup.x - 10, P.pistolPickup.y - 90, 20, 90);
-      // Pulsing ring on the ground.
-      ctx.strokeStyle = `rgba(255,225,77,${pulse})`;
+    ctx.beginPath();
+    ctx.arc(target.x, target.y, pulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,215,64,0.16)';
+    ctx.beginPath();
+    ctx.arc(target.x, target.y, pulse, 0, Math.PI * 2);
+    ctx.fill();
+    // Light pillar so it reads from far away.
+    ctx.fillStyle = 'rgba(255,215,64,0.10)';
+    ctx.fillRect(target.x - 5, target.y - 220, 10, 220);
+  }
+
+  // Pickups (pistol gets a tall beacon + ring).
+  for (const pk of state.world.pickups) {
+    if (pk.taken) continue;
+    pk.pulse += 0.016;
+    if (pk.kind === 'pistol') {
+      ctx.fillStyle = 'rgba(0,229,255,0.12)';
+      ctx.fillRect(pk.x - 4, pk.y - 260, 8, 260);
+      ctx.strokeStyle = '#00e5ff';
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.arc(P.pistolPickup.x, P.pistolPickup.y, 26 + Math.sin(S.time * 4) * 4, 0, Math.PI * 2);
+      ctx.arc(pk.x, pk.y, 20 + Math.sin(t * 6) * 4, 0, Math.PI * 2);
       ctx.stroke();
-      // The pistol itself.
-      ctx.fillStyle = '#222';
-      ctx.fillRect(P.pistolPickup.x - 12, P.pistolPickup.y - 4 + bob, 24, 8);
-      // PISTOL label ABOVE the beacon (dy -58), staggered away from the
-      // GARAGE label below the garage zone 200px north of here.
-      ctx.fillStyle = '#ffe14d';
-      ctx.font = 'bold 12px sans-serif';
-      ctx.textAlign = 'center';
-      const pw = ctx.measureText('PISTOL').width + 18;
-      const pat = clampLabelRect(P.pistolPickup.x - pw / 2, P.pistolPickup.y - 58 + bob, pw, 16, cam, vw, vh);
-      ctx.fillStyle = 'rgba(0,0,0,0.75)';
-      ctx.fillRect(pat.x, pat.y, pw, 16);
-      ctx.fillStyle = '#ffe14d';
-      ctx.fillText('PISTOL', pat.x + pw / 2, pat.y + 13);
-    }
-    // Mission target beacon, in the target's own colour (the garage ring is
-    // yellow because the job says "yellow garage marker").
-    if (M.active && M.active.target) {
-      const t = M.active.target;
-      const bc = t.color || '#ff2e88';
-      const pulse = 1 + Math.sin(S.time * 4) * 0.12;
-      ctx.strokeStyle = bc;
-      ctx.lineWidth = 4;
+      ctx.fillStyle = '#00e5ff';
+      ctx.fillRect(pk.x - 9, pk.y - 3, 18, 6);
+      ctx.fillRect(pk.x + 4, pk.y + 2, 5, 8);
+    } else if (pk.kind === 'cash') {
+      ctx.fillStyle = '#00ffa3';
       ctx.beginPath();
-      ctx.arc(t.x, t.y, 34 * pulse, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.fillStyle = bc;
-      ctx.beginPath();
-      ctx.moveTo(t.x, t.y - 52);
-      ctx.lineTo(t.x - 10, t.y - 30);
-      ctx.lineTo(t.x + 10, t.y - 30);
-      ctx.closePath();
+      ctx.arc(pk.x, pk.y, 9, 0, Math.PI * 2);
       ctx.fill();
-      ctx.font = 'bold 13px sans-serif';
+      ctx.fillStyle = '#06351f';
+      ctx.font = 'bold 11px system-ui, sans-serif';
       ctx.textAlign = 'center';
-      const w = ctx.measureText(M.active.target.label.toUpperCase()).width + 18;
-      const bat = clampLabelRect(t.x - w / 2, t.y - 78, w, 22, cam, vw, vh);
-      ctx.fillStyle = 'rgba(0,0,0,0.75)';
-      ctx.fillRect(bat.x, bat.y, w, 22);
-      ctx.fillStyle = bc;
-      ctx.fillText(M.active.target.label.toUpperCase(), bat.x + w / 2, bat.y + 16);
+      ctx.fillText('$', pk.x, pk.y + 4);
+    } else {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(pk.x - 9, pk.y - 9, 18, 18);
+      ctx.fillStyle = '#ff1744';
+      ctx.fillRect(pk.x - 2, pk.y - 7, 4, 14);
+      ctx.fillRect(pk.x - 7, pk.y - 2, 14, 4);
     }
   }
 
-  function drawCar(ctx, c) {
-    const isPolice = c.kind === 'police';
-    // Police glow halo: a red/blue pulse under the car, visible at a glance.
-    if (isPolice) {
-      const t = NBN.world.getState().time;
-      const red = Math.sin(t * 10) > 0;
-      ctx.fillStyle = red ? 'rgba(255,46,46,0.30)' : 'rgba(46,123,255,0.30)';
+  // Pedestrians.
+  for (const ped of state.world.peds) {
+    if (!ped.alive) {
+      ctx.fillStyle = 'rgba(180,180,200,0.5)';
       ctx.beginPath();
-      ctx.arc(c.x, c.y, 36, 0, Math.PI * 2);
+      ctx.ellipse(ped.x, ped.y, 12, 6, ped.angle, 0, Math.PI * 2);
       ctx.fill();
+      continue;
     }
+    ctx.fillStyle = ped.color;
+    ctx.beginPath();
+    ctx.arc(ped.x, ped.y, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffe0b2';
+    ctx.beginPath();
+    ctx.arc(ped.x, ped.y, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Cars.
+  for (const car of state.world.cars) drawCar(ctx, car, t);
+
+  // Player (on foot).
+  const p = state.player;
+  if (!p.inCar) {
     ctx.save();
-    ctx.translate(c.x, c.y);
-    ctx.rotate(c.angle);
-    // Shadow.
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    ctx.fillRect(-CFG.CAR_LENGTH / 2 + 3, -CFG.CAR_WIDTH / 2 + 4, CFG.CAR_LENGTH, CFG.CAR_WIDTH);
-    // Body: police are always black-and-white; everyone else keeps their color.
-    ctx.fillStyle = isPolice ? '#f2f2f2' : c.color;
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.angle);
+    ctx.fillStyle = '#ff2d95';
     ctx.beginPath();
-    ctx.roundRect(-CFG.CAR_LENGTH / 2, -CFG.CAR_WIDTH / 2, CFG.CAR_LENGTH, CFG.CAR_WIDTH, 7);
+    ctx.arc(0, 0, 10, 0, Math.PI * 2);
     ctx.fill();
-    if (isPolice) {
-      // Black hood and trunk — the classic black-and-white.
-      ctx.fillStyle = '#111318';
-      ctx.fillRect(CFG.CAR_LENGTH / 2 - 13, -CFG.CAR_WIDTH / 2, 13, CFG.CAR_WIDTH);
-      ctx.fillRect(-CFG.CAR_LENGTH / 2, -CFG.CAR_WIDTH / 2, 12, CFG.CAR_WIDTH);
-    }
-    // Cabin + bright windshield at the FRONT, so the facing is readable.
-    ctx.fillStyle = isPolice ? 'rgba(20,30,45,0.9)' : '#bfe8ff';
+    ctx.fillStyle = '#ffe0b2';
     ctx.beginPath();
-    ctx.roundRect(2, -CFG.CAR_WIDTH / 2 + 4, 12, CFG.CAR_WIDTH - 8, 3);
+    ctx.arc(0, 0, 5.5, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = 'rgba(20,30,45,0.85)';
-    ctx.beginPath();
-    ctx.roundRect(-10, -CFG.CAR_WIDTH / 2 + 4, 10, CFG.CAR_WIDTH - 8, 3);
-    ctx.fill();
-    // Headlight cones: pale beams forward, so the front is unmistakable.
-    ctx.fillStyle = 'rgba(255,248,192,0.35)';
-    ctx.beginPath();
-    ctx.moveTo(CFG.CAR_LENGTH / 2, -CFG.CAR_WIDTH / 2 + 4);
-    ctx.lineTo(CFG.CAR_LENGTH / 2 + 22, -CFG.CAR_WIDTH / 2 - 2);
-    ctx.lineTo(CFG.CAR_LENGTH / 2 + 22, -2);
-    ctx.lineTo(CFG.CAR_LENGTH / 2, -2);
-    ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(CFG.CAR_LENGTH / 2, 2);
-    ctx.lineTo(CFG.CAR_LENGTH / 2 + 22, 2);
-    ctx.lineTo(CFG.CAR_LENGTH / 2 + 22, CFG.CAR_WIDTH / 2 + 2);
-    ctx.lineTo(CFG.CAR_LENGTH / 2, CFG.CAR_WIDTH / 2 - 4);
-    ctx.closePath();
-    ctx.fill();
-    // Hood chevron pointing forward.
-    ctx.fillStyle = isPolice ? '#111318' : 'rgba(255,255,255,0.85)';
-    ctx.beginPath();
-    ctx.moveTo(CFG.CAR_LENGTH / 2 - 8, 0);
-    ctx.lineTo(CFG.CAR_LENGTH / 2 - 16, -6);
-    ctx.lineTo(CFG.CAR_LENGTH / 2 - 16, 6);
-    ctx.closePath();
-    ctx.fill();
-    // The player's car gets an explicit forward arrow at the nose, so the
-    // facing is readable at a glance even in a still frame.
-    if (c.kind === 'player') {
-      ctx.fillStyle = '#ffe14d';
-      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(CFG.CAR_LENGTH / 2 + 26, 0);
-      ctx.lineTo(CFG.CAR_LENGTH / 2 + 4, -9);
-      ctx.lineTo(CFG.CAR_LENGTH / 2 + 4, 9);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-    }
-    // Headlights / taillights.
-    ctx.fillStyle = '#fff8c0';
-    ctx.fillRect(CFG.CAR_LENGTH / 2 - 3, -CFG.CAR_WIDTH / 2 + 3, 3, 5);
-    ctx.fillRect(CFG.CAR_LENGTH / 2 - 3, CFG.CAR_WIDTH / 2 - 8, 3, 5);
-    ctx.fillStyle = '#ff3b30';
-    ctx.fillRect(-CFG.CAR_LENGTH / 2, -CFG.CAR_WIDTH / 2 + 3, 3, 5);
-    ctx.fillRect(-CFG.CAR_LENGTH / 2, CFG.CAR_WIDTH / 2 - 8, 3, 5);
-    // Police livery: big flashing light bar + POLICE on the side.
-    if (isPolice) {
-      const t = NBN.world.getState().time;
-      const red = Math.sin(t * 10) > 0;
-      ctx.fillStyle = red ? '#ff2e2e' : '#2e7bff';
-      ctx.fillRect(-7, -CFG.CAR_WIDTH / 2 - 4, 14, 7);
-      ctx.fillStyle = red ? '#2e7bff' : '#ff2e2e';
-      ctx.fillRect(7, -CFG.CAR_WIDTH / 2 - 4, 14, 7);
-      ctx.fillStyle = '#111';
-      ctx.font = 'bold 9px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('POLICE', 0, 3);
-    }
-    // Damage smoke.
-    if (c.health < 45) {
-      ctx.fillStyle = 'rgba(60,60,60,0.6)';
-      ctx.beginPath();
-      ctx.arc(-CFG.CAR_LENGTH / 2 + 6, 0, 6 + Math.random() * 4, 0, Math.PI * 2);
-      ctx.fill();
+    if (state.hasPistol) {
+      ctx.fillStyle = '#111111';
+      ctx.fillRect(6, -2, 14, 4);
     }
     ctx.restore();
-    // Health bar ONLY for the player's own car — traffic never shows one.
-    if (c.kind === 'player' && c.health < 100) {
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(c.x - 24, c.y - 34, 48, 6);
-      ctx.fillStyle = c.health > 30 ? '#7CFF6B' : '#ff3b30';
-      ctx.fillRect(c.x - 23, c.y - 33, 46 * (c.health / 100), 4);
-    }
   }
 
-  function drawPed(ctx, pd) {
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  // Tracers + muzzle flashes.
+  ctx.strokeStyle = 'rgba(255,240,150,0.9)';
+  ctx.lineWidth = 2;
+  for (const tr of state.tracers) {
     ctx.beginPath();
-    ctx.ellipse(pd.x + 2, pd.y + 3, 9, 7, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = pd.color;
-    ctx.beginPath();
-    ctx.arc(pd.x, pd.y, 9, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#f2c89b';
-    ctx.beginPath();
-    ctx.arc(pd.x + Math.cos(pd.angle) * 3, pd.y + Math.sin(pd.angle) * 3, 5, 0, Math.PI * 2);
-    ctx.fill();
-    if (pd.panic > 0) {
-      ctx.fillStyle = '#ff3b30';
-      ctx.font = 'bold 14px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('!', pd.x, pd.y - 14);
-    }
-  }
-
-  function drawPlayer(ctx, p) {
-    if (p.inCar) return; // the car drawing covers the driver
-    const blink = p.invuln > 0 && Math.floor(p.invuln * 8) % 2 === 0;
-    if (blink) return; // spawn-protection blink
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    ctx.beginPath();
-    ctx.ellipse(p.x + 2, p.y + 4, 12, 9, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // Body: teal jacket, dark jeans — the driver for hire.
-    ctx.fillStyle = '#1f8a8a';
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 12, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#f2c89b';
-    ctx.beginPath();
-    ctx.arc(p.x + Math.cos(p.angle) * 5, p.y + Math.sin(p.angle) * 5, 7, 0, Math.PI * 2);
-    ctx.fill();
-    // Aim direction tick.
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(p.x + Math.cos(p.angle) * 12, p.y + Math.sin(p.angle) * 12);
-    ctx.lineTo(p.x + Math.cos(p.angle) * 22, p.y + Math.sin(p.angle) * 22);
+    ctx.moveTo(tr.x1, tr.y1);
+    ctx.lineTo(tr.x2, tr.y2);
     ctx.stroke();
-    if (p.hasPistol) {
-      ctx.fillStyle = '#222';
-      ctx.fillRect(p.x + Math.cos(p.angle) * 14 - 3, p.y + Math.sin(p.angle) * 14 - 2, 8, 4);
-    }
+  }
+  ctx.fillStyle = 'rgba(255,200,60,0.9)';
+  for (const f of state.flashes) {
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, 9, 0, Math.PI * 2);
+    ctx.fill();
   }
 
-  function drawWorld(ctx, cam, vw, vh) {
-    const S = NBN.world.getState();
-    drawGround(ctx, cam, vw, vh);
-    drawParksAndTrees(ctx, cam, vw, vh);
-    drawPlaces(ctx, cam, vw, vh);
-    drawBuildings(ctx, cam, vw, vh);
-    // Rico marker (mission 3, stage 0).
-    const M = NBN.missions.getState();
-    if (M.active && M.active.def.id === 3 && M.active.stage === 0) {
-      const r = NBN.PLACES.ricoPickup;
-      ctx.fillStyle = '#5cb8ff';
-      ctx.beginPath();
-      ctx.arc(r.x, r.y, 11, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 11px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('RICO', r.x, r.y - 16);
-    }
-    // Guards.
-    for (const g of S.guards) {
-      if (g.hp <= 0) continue;
-      ctx.fillStyle = '#3a3a44';
-      ctx.beginPath();
-      ctx.arc(g.x, g.y, 11, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#ff3b30';
-      ctx.font = 'bold 10px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('GUARD', g.x, g.y - 16);
-    }
-    // Foot cops.
-    for (const c of S.cops) {
-      ctx.fillStyle = '#1c2a4a';
-      ctx.beginPath();
-      ctx.arc(c.x, c.y, 11, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#9db8ff';
-      ctx.beginPath();
-      ctx.arc(c.x, c.y - 3, 6, 0, Math.PI * 2);
-      ctx.fill();
-      if (c.arrest > 0) {
-        ctx.fillStyle = '#ff3b30';
-        ctx.fillRect(c.x - 15, c.y - 26, 30, 5);
-        ctx.fillStyle = '#ffe14d';
-        ctx.fillRect(c.x - 14, c.y - 25, 28 * (c.arrest / CFG.ARREST_SECONDS), 3);
-      }
-    }
-    // Pedestrians.
-    for (const pd of S.peds) drawPed(ctx, pd);
-    // Cars, sorted so the player's car draws last.
-    const cars = S.cars.slice().sort((a, b) => (a.kind === 'player' ? 1 : 0) - (b.kind === 'player' ? 1 : 0));
-    for (const c of cars) drawCar(ctx, c);
-    // Bullets: a LONG bright tracer line + a big dot, so a shot is
-    // unmistakable even in a still screenshot. The trail is 0.15s of travel
-    // (~96px) with a white-hot core, and the head dot is 7px.
-    for (const b of S.bullets) {
-      ctx.strokeStyle = 'rgba(255,225,77,0.9)';
-      ctx.lineWidth = 6;
-      ctx.beginPath();
-      ctx.moveTo(b.x - b.vx * 0.15, b.y - b.vy * 0.15);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(b.x - b.vx * 0.15, b.y - b.vy * 0.15);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
-      ctx.fillStyle = '#fff3b0';
-      ctx.beginPath();
-      ctx.arc(b.x, b.y, 7, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    // Muzzle flash: a bright star that lingers 0.3s after the shot, so the
-    // shot is visible even in a still screenshot.
-    if (S.muzzle) {
-      const a = Math.max(0, S.muzzle.t / 0.3);
+  ctx.restore();
+
+  // --- Screen-space overlays: direction arrow + de-overlapped world labels ---
+  const pp = state.player.inCar || state.player;
+  if (target) {
+    const dx = target.x - pp.x;
+    const dy = target.y - pp.y;
+    const dist = Math.hypot(dx, dy);
+    const sx = target.x - cam.x;
+    const sy = target.y - cam.y;
+    const offscreen = sx < 30 || sy < 110 || sx > canvas.width - 30 || sy > canvas.height - 30;
+    if (offscreen && dist > 80) {
+      const ang = Math.atan2(dy, dx);
+      const ax = canvas.width / 2 + Math.cos(ang) * 130;
+      const ay = canvas.height / 2 + Math.sin(ang) * 100;
       ctx.save();
-      ctx.globalAlpha = a;
-      ctx.fillStyle = '#ffe14d';
+      ctx.translate(ax, ay);
+      ctx.rotate(ang);
+      ctx.fillStyle = '#ffd740';
       ctx.beginPath();
-      ctx.arc(S.muzzle.x, S.muzzle.y, 17, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#fff';
-      ctx.beginPath();
-      ctx.arc(S.muzzle.x, S.muzzle.y, 8, 0, Math.PI * 2);
+      ctx.moveTo(16, 0);
+      ctx.lineTo(-10, -9);
+      ctx.lineTo(-10, 9);
+      ctx.closePath();
       ctx.fill();
       ctx.restore();
-    }
-    // Particles.
-    for (const pt of S.particles) {
-      ctx.globalAlpha = Math.max(0, pt.life / pt.max);
-      ctx.fillStyle = pt.color;
-      ctx.fillRect(pt.x - pt.size / 2, pt.y - pt.size / 2, pt.size, pt.size);
-    }
-    ctx.globalAlpha = 1;
-    // Floating text.
-    ctx.font = 'bold 16px sans-serif';
-    ctx.textAlign = 'center';
-    for (const f of S.floats) {
-      ctx.globalAlpha = Math.max(0, f.life / 1.4);
-      ctx.fillStyle = f.color;
-      ctx.fillText(f.txt, f.x, f.y);
-    }
-    ctx.globalAlpha = 1;
-    drawPlayer(ctx, S.player);
-    // Steal prompt — solid backing and a border, readable over any road.
-    if (!S.player.inCar && !S.over) {
-      const car = NBN.world.nearestCar(CFG.STEAL_RADIUS);
-      if (car) {
-        const txt = car.coupe ? 'Press E — steal the yellow coupe' : 'Press E — steal car';
-        ctx.font = 'bold 14px sans-serif';
-        const w = ctx.measureText(txt).width + 24;
-        ctx.fillStyle = 'rgba(0,0,0,0.85)';
-        ctx.fillRect(car.x - w / 2, car.y - 52, w, 26);
-        ctx.strokeStyle = '#ffe14d';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(car.x - w / 2, car.y - 52, w, 26);
-        ctx.fillStyle = '#ffe14d';
-        ctx.textAlign = 'center';
-        ctx.fillText(txt, car.x, car.y - 34);
-      }
+      ctx.fillStyle = '#ffd740';
+      ctx.font = 'bold 12px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(Math.round(dist) + 'm', ax, ay + 26);
     }
   }
 
-  NBN.render = { drawWorld };
-})();
+  // Collect labels, then place them without overlap and below the HUD band.
+  const labels = [];
+  const addLabel = (wx, wy, text, color) => {
+    const sx = wx - cam.x;
+    const sy = wy - cam.y;
+    if (sx < -80 || sx > canvas.width + 80 || sy < 100 || sy > canvas.height + 40) return;
+    labels.push({ x: sx, y: sy - 34, text, color });
+  };
+  addLabel(g.x, g.y, 'GARAGE', '#ffe600');
+  if (target) addLabel(target.x, target.y, target.label, '#ffd740');
+  for (const pk of state.world.pickups) {
+    if (pk.taken) continue;
+    if (pk.kind === 'pistol') addLabel(pk.x, pk.y, 'PISTOL', '#00e5ff');
+    if (pk.kind === 'health') addLabel(pk.x, pk.y, 'HEALTH', '#ffffff');
+  }
+  for (const car of state.world.cars) {
+    if (car.missionCar && state.player.inCar !== car) addLabel(car.x, car.y, 'TARGET CAR', '#ffd740');
+  }
+  ctx.font = 'bold 12px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  const placed = [];
+  for (const lb of labels) {
+    let y = lb.y;
+    let guard = 0;
+    const collides = () => placed.some((q) => Math.abs(q.x - lb.x) < 92 && Math.abs(q.y - y) < 18);
+    while (collides() && guard < 8) { y -= 18; guard++; }
+    if (y < 100) continue; // never under the HUD
+    placed.push({ x: lb.x, y });
+    const tw = ctx.measureText(lb.text).width + 12;
+    ctx.fillStyle = 'rgba(8,10,24,0.75)';
+    ctx.fillRect(lb.x - tw / 2, y - 13, tw, 18);
+    ctx.fillStyle = lb.color;
+    ctx.fillText(lb.text, lb.x, y);
+  }
+}

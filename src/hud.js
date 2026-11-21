@@ -1,178 +1,118 @@
-// Neon Bay Nights — hud.js
-// One job: the HUD — wanted stars, cash, health, speed, objective text
-// (with distance to the objective), messages, mission banners and the
-// red damage vignette.
-//
-// The objective line always shows the CURRENT job, never the step already
-// done: after stealing the car, mission 1 is about the garage, not about
-// stealing — the old text flipped back to the steal order while the
-// player was already driving. The controls hint sits under the HEALTH
-// panel, never on top of the minimap.
-(function () {
-  'use strict';
+// Neon Bay Nights — HUD and menus (canvas-drawn).
+import { missionBanner } from './missions.js';
 
-  const NBN = window.NBN;
-  const CFG = NBN.CFG;
+export function drawHud(ctx, canvas, state) {
+  const w = canvas.width;
+  ctx.save();
+  // Top bar background so world labels never hide under it (render skips y<96).
+  ctx.fillStyle = 'rgba(8,10,24,0.78)';
+  ctx.fillRect(0, 0, w, 86);
+  ctx.fillStyle = '#ff2d95';
+  ctx.fillRect(0, 86, w, 2);
 
-  function drawStars(ctx, wanted, x, y) {
-    ctx.font = '26px sans-serif';
-    ctx.textAlign = 'left';
-    for (let i = 0; i < 5; i++) {
-      ctx.fillStyle = i < wanted ? '#ffe14d' : 'rgba(255,255,255,0.25)';
-      ctx.fillText('★', x + i * 28, y);
-    }
+  ctx.font = 'bold 20px system-ui, sans-serif';
+  ctx.fillStyle = '#ffe600';
+  ctx.textAlign = 'left';
+  ctx.fillText('$' + Math.floor(state.money), 16, 30);
+
+  // Health bar.
+  ctx.fillStyle = '#2a2f4d';
+  ctx.fillRect(16, 40, 180, 14);
+  ctx.fillStyle = state.health > 35 ? '#00ffa3' : '#ff5252';
+  ctx.fillRect(16, 40, 180 * Math.max(0, state.health) / 100, 14);
+  ctx.strokeStyle = '#5a628f';
+  ctx.strokeRect(16, 40, 180, 14);
+  ctx.fillStyle = '#cfd6ff';
+  ctx.font = '12px system-ui, sans-serif';
+  ctx.fillText('HEALTH ' + Math.ceil(state.health), 16, 70);
+
+  // Wanted stars.
+  ctx.font = '22px system-ui, sans-serif';
+  ctx.textAlign = 'right';
+  for (let i = 0; i < 5; i++) {
+    ctx.fillStyle = i < state.wanted ? '#ffe600' : '#3a4066';
+    ctx.fillText('★', w - 16 - i * 26, 32);
   }
+  ctx.font = '12px system-ui, sans-serif';
+  ctx.fillStyle = '#cfd6ff';
+  ctx.fillText(state.wanted > 0 ? 'WANTED — lose the police!' : 'No heat', w - 16, 52);
 
-  function drawBar(ctx, x, y, w, h, frac, color, bg) {
-    ctx.fillStyle = bg || 'rgba(0,0,0,0.6)';
-    ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = color;
-    ctx.fillRect(x + 2, y + 2, (w - 4) * NBN.clamp(frac, 0, 1), h - 4);
+  // Weapon / vehicle line.
+  ctx.textAlign = 'right';
+  ctx.font = '13px system-ui, sans-serif';
+  ctx.fillStyle = '#9be7ff';
+  const veh = state.player.inCar ? 'DRIVING — E to exit' : 'ON FOOT — E to enter a car';
+  ctx.fillText(veh, w - 16, 70);
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#ffb3d9';
+  ctx.fillText(state.hasPistol ? 'PISTOL  ammo ' + state.ammo : 'No weapon — find the PISTOL beacon', 216, 30);
+
+  // Stage-aware mission banner.
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 15px system-ui, sans-serif';
+  ctx.fillStyle = '#ffffff';
+  const banner = missionBanner(state);
+  ctx.fillText(banner, w / 2, 108);
+
+  // Toast message.
+  if (state.messageT > 0 && state.message) {
+    ctx.font = '14px system-ui, sans-serif';
+    const tw = ctx.measureText(state.message).width + 28;
+    ctx.fillStyle = 'rgba(8,10,24,0.82)';
+    ctx.fillRect((w - tw) / 2, canvas.height - 58, tw, 30);
+    ctx.fillStyle = '#ffe600';
+    ctx.fillText(state.message, w / 2, canvas.height - 38);
   }
+  ctx.restore();
+}
 
-  function drawHud(ctx, vw, vh) {
-    const S = NBN.world.getState();
-    const M = NBN.missions.getState();
-    const p = S.player;
-
-    // Top-left: wanted stars + cash.
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(14, 12, 210, 74);
-    drawStars(ctx, p.wanted, 24, 40);
-    ctx.fillStyle = '#7CFF6B';
-    ctx.font = 'bold 22px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(`$${Math.floor(p.money).toLocaleString('en-US')}`, 24, 72);
-
-    // Top-right: health + ammo.
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(vw - 224, 12, 210, 74);
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 13px sans-serif';
-    ctx.fillText('HEALTH', vw - 214, 32);
-    drawBar(ctx, vw - 214, 38, 190, 12, p.health / CFG.PLAYER_HEALTH, p.health > 30 ? '#7CFF6B' : '#ff3b30');
-    ctx.fillStyle = '#fff';
-    ctx.fillText(p.hasPistol ? `PISTOL  ${p.ammo} rounds` : 'PISTOL — pickup by the garage', vw - 214, 72);
-
-    // Controls hint, top-right under the HEALTH panel (it used to overlap
-    // the minimap in the bottom-right corner).
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.fillRect(vw - 300, 96, 286, 22);
-    ctx.fillStyle = '#cfd2d8';
-    ctx.font = '12px sans-serif';
-    ctx.fillText('WASD drive · E steal / exit · Space fight · P pause', vw - 292, 111);
-
-    // Bottom-left: speed when driving.
-    if (p.inCar) {
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
-      ctx.fillRect(14, vh - 74, 150, 54);
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 24px sans-serif';
-      ctx.fillText(`${Math.round(Math.abs(p.inCar.speed) * 0.22)} mph`, 26, vh - 42);
-      ctx.font = '12px sans-serif';
-      ctx.fillStyle = '#cfd2d8';
-      ctx.fillText(`car ${Math.round(p.inCar.health)}%`, 26, vh - 26);
-    }
-
-    // Objective line, top-center — with the distance to the target.
-    const obj = currentObjective();
-    if (obj) {
-      ctx.font = 'bold 15px sans-serif';
-      const w = ctx.measureText(obj).width + 28;
-      ctx.fillStyle = 'rgba(0,0,0,0.55)';
-      ctx.fillRect((vw - w) / 2, 12, w, 30);
-      ctx.fillStyle = '#ffe14d';
-      ctx.textAlign = 'center';
-      ctx.fillText(obj, vw / 2, 32);
-      ctx.textAlign = 'left';
-    }
-
-    // Mission timer.
-    if (M.active && M.active.def.timeLimit) {
-      const t = Math.max(0, M.active.timer);
-      ctx.fillStyle = t < 15 ? '#ff3b30' : '#fff';
-      ctx.font = 'bold 26px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`${Math.ceil(t)}s`, vw / 2, 78);
-      ctx.textAlign = 'left';
-    }
-
-    // Toast message.
-    if (S.messageT > 0 && S.message) {
-      ctx.font = '15px sans-serif';
-      const w = ctx.measureText(S.message).width + 28;
-      ctx.fillStyle = 'rgba(0,0,0,0.75)';
-      ctx.fillRect((vw - w) / 2, vh - 110, w, 30);
-      ctx.fillStyle = '#fff';
-      ctx.textAlign = 'center';
-      ctx.fillText(S.message, vw / 2, vh - 90);
-      ctx.textAlign = 'left';
-    }
-
-    // Mission banner (start / complete).
-    if (M.banner) {
-      const a = Math.min(1, M.banner.t);
-      ctx.globalAlpha = a;
-      ctx.fillStyle = 'rgba(0,0,0,0.7)';
-      ctx.fillRect(0, vh / 2 - 70, vw, 110);
-      ctx.fillStyle = '#ff2e88';
-      ctx.font = 'bold 34px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(M.banner.title, vw / 2, vh / 2 - 26);
-      ctx.fillStyle = '#fff';
-      ctx.font = '16px sans-serif';
-      ctx.fillText(M.banner.sub, vw / 2, vh / 2 + 6);
-      ctx.globalAlpha = 1;
-      ctx.textAlign = 'left';
-    }
-
-    // "Press Enter for the next job" hint.
-    if (!M.active && !M.failed && M.index < NBN.MISSIONS.length && !S.over) {
-      ctx.font = 'bold 16px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#ffe14d';
-      ctx.fillText(`Press Enter — next job: ${NBN.MISSIONS[M.index].name} ($${NBN.MISSIONS[M.index].reward})`, vw / 2, vh - 150);
-      ctx.textAlign = 'left';
-    }
-    if (!M.active && M.index >= NBN.MISSIONS.length && !S.over) {
-      ctx.font = 'bold 18px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#7CFF6B';
-      ctx.fillText('All jobs complete — Neon Bay is yours. Free roam!', vw / 2, vh - 150);
-      ctx.textAlign = 'left';
-    }
-
-    // Damage vignette: a clear red flash so a hit is never silent.
-    if (S.flash > 0) {
-      const g = ctx.createRadialGradient(vw / 2, vh / 2, vh * 0.3, vw / 2, vh / 2, vh * 0.75);
-      g.addColorStop(0, 'rgba(255,0,0,0)');
-      g.addColorStop(1, `rgba(255,0,0,${0.55 * S.flash})`);
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, vw, vh);
-    }
+export function drawMenus(ctx, canvas, state) {
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.save();
+  if (state.mode === 'menu') {
+    ctx.fillStyle = 'rgba(5,6,16,0.82)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ff2d95';
+    ctx.font = 'bold 52px system-ui, sans-serif';
+    ctx.fillText('NEON BAY NIGHTS', w / 2, h / 2 - 120);
+    ctx.fillStyle = '#00e5ff';
+    ctx.font = '18px system-ui, sans-serif';
+    ctx.fillText('A top-down open-world crime game in the city of Neon Bay', w / 2, h / 2 - 84);
+    ctx.fillStyle = '#e8ebff';
+    ctx.font = '15px system-ui, sans-serif';
+    const lines = [
+      'WASD / Arrows — walk & drive      E — enter / exit car',
+      'Mouse — aim      Click — shoot (after the pistol pickup)',
+      'Shift — run      Space — handbrake      P / Esc — pause',
+      'Complete 5 fixer missions. Steal cars, grab cash, outrun the police.',
+      'Police keep their distance — you can always drive away.',
+    ];
+    lines.forEach((line, i) => ctx.fillText(line, w / 2, h / 2 - 36 + i * 24));
+    ctx.fillStyle = '#ffe600';
+    ctx.font = 'bold 20px system-ui, sans-serif';
+    ctx.fillText('Press ENTER or click to play', w / 2, h / 2 + 130);
+  } else if (state.mode === 'pause') {
+    ctx.fillStyle = 'rgba(5,6,16,0.7)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 36px system-ui, sans-serif';
+    ctx.fillText('PAUSED', w / 2, h / 2 - 10);
+    ctx.font = '15px system-ui, sans-serif';
+    ctx.fillStyle = '#cfd6ff';
+    ctx.fillText('Press P, Esc, Enter or click to resume', w / 2, h / 2 + 28);
+  } else if (state.mode === 'dead') {
+    ctx.fillStyle = 'rgba(60,0,10,0.62)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ff5252';
+    ctx.font = 'bold 44px system-ui, sans-serif';
+    ctx.fillText('TAKEN OUT', w / 2, h / 2 - 12);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '15px system-ui, sans-serif';
+    ctx.fillText('Respawning at the garage with a small hospital fee…', w / 2, h / 2 + 24);
   }
-
-  function currentObjective() {
-    const M = NBN.missions.getState();
-    if (!M.active) return null;
-    const m = M.active;
-    const d = m.def;
-    let text = `Mission ${d.id}: ${d.name} — ${d.hint}`;
-    // Stage-aware: once the steal is done, the banner is about the garage,
-    // never about stealing again. Once Rico is in the car, it is about
-    // losing the cops. Once the cash is grabbed, it is about escaping.
-    if (d.id === 1 && m.stage === 1) text = 'Mission 1: First Wheels — drive to the yellow garage marker';
-    if (d.id === 3 && m.stage === 1) text = 'Mission 3: The Getaway — lose the cops, then reach the safehouse';
-    if (d.id === 4 && m.stage === 1) text = 'Mission 4: Repo Man — deliver the coupe to the garage, over 30% condition';
-    if (d.id === 5 && m.stage === 1) text = 'Mission 5: The Bay Trust Job — lose the Bay PD, reach the safehouse';
-    // Distance to the objective, in meters (10 world px = 1 m).
-    if (m.target) {
-      const S = NBN.world.getState();
-      const meters = Math.round(NBN.dist(S.player.x, S.player.y, m.target.x, m.target.y) / 10);
-      text += `  ·  ${meters}m`;
-    }
-    return text;
-  }
-
-  NBN.hud = { drawHud, currentObjective };
-})();
+  ctx.restore();
+}
