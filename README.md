@@ -1,55 +1,45 @@
 # Neon Bay Nights
 
-![gta6-01](https://make.fun/badge/gta6-01.svg)
-![rank](https://make.fun/badge/gta6-01/Vikkry88/neon-bay-nights/rank.svg)
-![reward](https://make.fun/badge/gta6-01/Vikkry88/neon-bay-nights/reward.svg)
+A 2D top-down open-world crime game for make.fun bounty gta6-01 ("Make GTA 6").
+All names, art and music are original — the fictional coastal city of Neon Bay,
+with fixer Marlowe handing out jobs. No third-party game assets are used.
 
-A 2D top-down open-world crime game set in **Neon Bay**, built for the
-[make.fun "Make GTA 6" bounty (gta6-01)](https://make.fun/bounty/gta6-01).
-Everything here is original — no Rockstar/GTA names, characters, maps, art or
-music. Play it in the browser: walk the neon streets, steal cars, run five
-fixer missions, grab the pistol, and outrun the police.
+## Play
 
-**Play:** https://vikkry88.github.io/neon-bay-nights/
+Open `game/index.html` in a desktop browser, or run a local server:
 
-## How to play
+    node serve.ts
+    # then open http://localhost:8080
 
-- **WASD / Arrow keys** — walk on foot, drive when in a car
-- **E** — enter / exit a car (steal parked cars, or jack traffic cars)
-- **Mouse** — aim · **Click** — shoot (find the glowing **PISTOL** beacon first)
-- **Shift** — run · **Space** — handbrake · **P / Esc** — pause · **Enter** — start / respawn
+No build step and no network requests at runtime: every script is a file
+under `game/` loaded as an ES module.
 
-Follow the **gold marker** and the stage-aware mission banner at the top:
+## Controls
 
-1. **Night Package** — pick up a package, deliver it to the **GARAGE** yellow ring
-2. **Hot Wheels** — steal the marked target car, deliver it to the garage
-3. **Cash Drops** — collect 3 cash drops across the city
-4. **Lose the Heat** — reach the hideout and shake your wanted stars
-5. **Bay Courier** — pick up a parcel and run it to the drop-off
+- WASD / arrows — walk and drive (low-speed steering stays responsive)
+- E — steal / enter / exit a car
+- Mouse — aim on foot; click to punch or shoot the pistol
+- Enter — start game / take the next fixer job
+- P — pause, M — mute, R — restart after game over
 
-Crime raises your **wanted level** (1–5 stars). Police cruisers chase you but
-keep a safe standoff — they never pin you, so you can always drive away, even
-slowly. Traffic keeps flowing and never blocks a street forever. If you are
-taken out, you respawn at the garage with a small hospital fee. Progress
-(money + mission) saves automatically in your browser.
+## What is inside
 
-## Run locally
+Street grid with buildings, parks, beach and sea, traffic lights, driving
+traffic, sidewalk pedestrians, car theft, a 1–5 star wanted system with
+police cars and foot cops, five fixer missions with street-placed targets
+and a yellow garage ring, pistol pickup with a glowing beacon and visible
+tracers, cash progression, a canvas minimap, title / pause / mission /
+game-over screens, localStorage saving, particles, screen shake and
+synthesized WebAudio sound with a small music loop.
 
-```sh
-node serve.ts          # serves game/ on http://localhost:8080
-mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts   # build the make.fun dossier
-```
+Police keep a standoff distance instead of pinning the player, back off
+after gentle rams, and let a cornered player escape, so a slow drive to
+the garage stays possible with heat active. Traffic despawns and
+re-routes instead of gridlocking forever.
 
-Static files only — no build step, no network requests. The game lives in
-`game/` (`index.html` + ES modules in `game/src/`), with synthesized WebAudio
-sound effects (engine, shots, sirens, cash). Screenshots are in `screenshots/`.
+## Hand-in
 
-## Tech notes
+    mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
-- Canvas 2D, keyboard + mouse, seeded city generation (street grid, buildings,
-  neon signs, parks)
-- Police AI with a 72px minimum standoff and corner-pocket back-off
-- Jam-proof traffic (stuck cars respawn), low-speed steering with no dead zone
-- All mission targets snap to streets so they are always reachable by car
-- HUD (health, money, wanted stars, objective), minimap, start/pause/death
-  menus, localStorage save
+writes `out/game/`, `out/screenshots/` and `out/dossier.json`.
+Screenshots are staged with `?shot=cover|chase|mission|police` (see `shots.json`).

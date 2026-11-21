@@ -1,112 +1,76 @@
-// Neon Bay Nights — city generation: street grid, buildings, street helpers.
-import { CFG } from './config.js';
+// City layout: street grid, blocks, beach, parks, garage, pickups.
+import { WORLD_W, WORLD_H, ROAD_W, BLOCK, COLORS } from './config.js';
+
+export function roadCenters() {
+  const xs = [], ys = [];
+  for (let x = 150; x < WORLD_W; x += BLOCK) xs.push(x);
+  for (let y = 150; y < WORLD_H; y += BLOCK) ys.push(y);
+  return { xs, ys };
+}
+
+export function isOnRoad(x, y, margin) {
+  const m = margin || 0;
+  const { xs, ys } = roadCenters();
+  for (const cx of xs) if (Math.abs(x - cx) <= ROAD_W / 2 + m) return true;
+  for (const cy of ys) if (Math.abs(y - cy) <= ROAD_W / 2 + m) return true;
+  return false;
+}
+
+export function nearestRoadPoint(x, y) {
+  const { xs, ys } = roadCenters();
+  let bestX = xs[0], bestY = ys[0], bd = 1e18;
+  for (const cx of xs) { const d = Math.abs(cx - x); if (d < bd) { bd = d; bestX = cx; } }
+  bd = 1e18;
+  for (const cy of ys) { const d = Math.abs(cy - y); if (d < bd) { bd = d; bestY = cy; } }
+  // Snap to whichever road axis is closer so the point sits on asphalt.
+  if (Math.abs(bestX - x) <= Math.abs(bestY - y)) return { x: bestX, y };
+  return { x, y: bestY };
+}
 
 export function buildCity(rng) {
-  const size = CFG.worldSize;
-  const block = CFG.block;
-  const street = CFG.street;
-  const buildings = [];
-  const parks = [];
-  const signs = [];
-  const names = ['NOODLE', 'HOTEL', 'BAR', 'PAWN', 'DINER', 'GYM', 'CLUB', 'MART', 'TAXI', 'RADIO', 'PIZZA', 'MOTEL'];
-  for (let by = 0; by < size / block; by++) {
-    for (let bx = 0; bx < size / block; bx++) {
-      const ox = bx * block + street / 2;
-      const oy = by * block + street / 2;
-      const inner = block - street;
-      if (rng.chance(0.1)) {
-        parks.push({ x: ox, y: oy, w: inner, h: inner });
-        continue;
-      }
-      const cols = rng.int(1, 2);
-      const rows = rng.int(1, 2);
-      const cw = inner / cols;
-      const ch = inner / rows;
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const pad = 10;
-          const b = {
-            x: ox + c * cw + pad,
-            y: oy + r * ch + pad,
-            w: cw - pad * 2,
-            h: ch - pad * 2,
-            hue: rng.int(0, 5),
-            tall: rng.range(0.3, 1),
-          };
-          buildings.push(b);
-          if (rng.chance(0.55)) {
-            signs.push({
-              x: b.x + b.w / 2,
-              y: b.y + 14,
-              text: rng.pick(names),
-              color: rng.pick(CFG.colors.neon),
-            });
-          }
-        }
+  const { xs, ys } = roadCenters();
+  const buildings = [], parks = [], lights = [], neonSigns = [];
+  const beachY = WORLD_H - 260;
+  for (let i = 0; i < xs.length - 1; i++) {
+    for (let j = 0; j < ys.length - 1; j++) {
+      const bx = xs[i] + ROAD_W / 2 + 14, by = ys[j] + ROAD_W / 2 + 14;
+      const bw = BLOCK - ROAD_W - 28, bh = BLOCK - ROAD_W - 28;
+      if (by + bh > beachY - 30) continue;
+      if (rng.chance(0.14)) { parks.push({ x: bx, y: by, w: bw, h: bh }); continue; }
+      const cols = 2, rows = 2;
+      for (let a = 0; a < cols; a++) for (let b = 0; b < rows; b++) {
+        if (rng.chance(0.12)) continue;
+        const w = bw / cols - 10, h = bh / rows - 10;
+        const x = bx + a * (bw / cols) + 5, y = by + b * (bh / rows) + 5;
+        buildings.push({ x, y, w, h, color: rng.pick(COLORS.building), floors: rng.int(2, 6) });
+        if (rng.chance(0.5)) neonSigns.push({ x: x + w / 2, y: y + 8, color: rng.pick(COLORS.neon), text: rng.pick(['HOTEL', 'BAR', '24H', 'PIZZA', 'CLUB', 'CAFE']) });
       }
     }
   }
-  // Garage sits on a street intersection near the south-west, always car-reachable.
-  const garage = { x: block * 2, y: size - block * 2 };
-  CFG.garage.x = garage.x;
-  CFG.garage.y = garage.y;
-  return { size, block, street, buildings, parks, signs, garage };
+  for (const cx of xs) for (const cy of ys) lights.push({ x: cx, y: cy, phase: rng.next() * 6.28 });
+  const garage = { x: xs[1], y: ys[1], r: 46 };
+  const spawn = { x: xs[2] + 30, y: ys[2] + 30 };
+  const pistol = { x: xs[0] + 20, y: ys[0] - 20, kind: 'pistol' };
+  const health = { x: xs[xs.length - 1] - 20, y: ys[0] + 20, kind: 'health' };
+  return { xs, ys, buildings, parks, lights, neonSigns, beachY, garage, spawn, pickups: [pistol, health] };
 }
 
-export function isStreet(city, x, y) {
-  const m = city.block;
-  const s = city.street;
-  const mx = ((x % m) + m) % m;
-  const my = ((y % m) + m) % m;
-  const onV = mx < s / 2 || mx > m - s / 2;
-  const onH = my < s / 2 || my > m - s / 2;
-  return onV || onH;
-}
-
-// Snap any point to the nearest street centerline (mission targets live on streets).
-export function snapToStreet(city, x, y) {
-  const m = city.block;
-  const cx = Math.round(x / m) * m;
-  const cy = Math.round(y / m) * m;
-  const dx = Math.abs(x - cx);
-  const dy = Math.abs(y - cy);
-  let sx = x;
-  let sy = y;
-  if (dx < dy) sx = cx; else sy = cy;
-  sx = Math.max(40, Math.min(city.size - 40, sx));
-  sy = Math.max(40, Math.min(city.size - 40, sy));
-  // Nudge off building interiors just in case.
+export function collideBuildings(city, x, y, r) {
   for (const b of city.buildings) {
-    if (sx > b.x - 20 && sx < b.x + b.w + 20 && sy > b.y - 20 && sy < b.y + b.h + 20) {
-      sx = b.x - 30;
-    }
+    if (x + r > b.x && x - r < b.x + b.w && y + r > b.y && y - r < b.y + b.h) return b;
   }
-  return { x: sx, y: sy };
+  return null;
 }
 
-export function randomStreetPoint(city, rng, near, minD, maxD) {
-  for (let i = 0; i < 40; i++) {
-    const gx = rng.int(0, city.size / city.block) * city.block;
-    const gy = rng.int(0, city.size / city.block) * city.block;
-    const p = rng.chance(0.5)
-      ? { x: gx, y: rng.range(60, city.size - 60) }
-      : { x: rng.range(60, city.size - 60), y: gy };
-    if (!near) return p;
-    const d = Math.hypot(p.x - near.x, p.y - near.y);
-    if (d >= (minD || 0) && d <= (maxD || 1e9)) return p;
-  }
-  return snapToStreet(city, rng.range(100, city.size - 100), rng.range(100, city.size - 100));
-}
-
-export function streetDirectionAt(city, x, y) {
-  const m = city.block;
-  const s = city.street;
-  const mx = ((x % m) + m) % m;
-  const my = ((y % m) + m) % m;
-  const onV = mx < s / 2 || mx > m - s / 2;
-  const onH = my < s / 2 || my > m - s / 2;
-  if (onV && onH) return 'cross';
-  if (onV) return 'v';
-  if (onH) return 'h';
-  return 'block';
+export function pushOutOfBuildings(city, ent, r) {
+  const b = collideBuildings(city, ent.x, ent.y, r);
+  if (!b) return false;
+  const left = ent.x + r - b.x, right = b.x + b.w - (ent.x - r);
+  const top = ent.y + r - b.y, bottom = b.y + b.h - (ent.y - r);
+  const m = Math.min(left, right, top, bottom);
+  if (m === left) ent.x = b.x - r;
+  else if (m === right) ent.x = b.x + b.w + r;
+  else if (m === top) ent.y = b.y - r;
+  else ent.y = b.y + b.h + r;
+  return true;
 }
