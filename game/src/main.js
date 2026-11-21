@@ -1,251 +1,350 @@
-// Neon Bay Nights — main.js
-// One job: the game loop and the screens — title, playing, pause,
-// mission fail, WASTED / BUSTED — plus the camera and the boot sequence.
-(function () {
-  'use strict';
+// Neon Bay Nights — main loop and game state (round 5 fresh rebuild).
+import { CFG } from './config.js';
+import { makeRng } from './random.js';
+import { Sfx } from './audio.js';
+import { Input } from './input.js';
+import { buildCity, snapToStreet, isStreet } from './city.js';
+import { createWorld, updateTraffic, updatePeds, updatePolice, spawnSafe } from './world.js';
+import { MISSIONS, missionTarget, advanceMission } from './missions.js';
+import { drawHud, drawMenus } from './hud.js';
+import { drawMinimap } from './minimap.js';
+import { drawWorld } from './render.js';
+import { loadSave, storeSave } from './save.js';
+import { applyShot } from './shots.js';
 
-  const NBN = window.NBN;
-  const CFG = NBN.CFG;
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const statusEl = document.getElementById('status');
 
-  let canvas = null;
-  let ctx = null;
-  let screen = 'title'; // title | playing | paused | failed | over
-  let lastT = 0;
-  let booted = false;
-  let shotApplied = false;
-  let titleSave = null; // save snapshot read once at boot, shown on the title screen
+function resize() {
+  canvas.width = Math.min(window.innerWidth, 1600);
+  canvas.height = Math.min(window.innerHeight, 1000);
+}
+window.addEventListener('resize', resize);
+resize();
 
-  const camera = { x: 0, y: 0 };
+const params = new URLSearchParams(location.search);
+const seed = Number(params.get('seed') || 7) || 7;
+const rng = makeRng(seed);
+const city = buildCity(rng);
+const input = new Input(canvas);
+const sfx = new Sfx();
 
-  function resize() {
-    canvas.width = CFG.VIEW_W;
-    canvas.height = CFG.VIEW_H;
-  }
+const state = {
+  mode: 'menu', // menu | play | pause | dead
+  time: 0,
+  money: 250,
+  health: 100,
+  wanted: 0,
+  wantedHeat: 0,
+  missionIdx: 0,
+  missionStage: 0,
+  cashGot: 0,
+  escapeTimer: 0,
+  hasPistol: false,
+  ammo: 0,
+  player: { x: 0, y: 0, angle: 0, speed: 0, inCar: null, walkPhase: 0 },
+  cam: { x: 0, y: 0 },
+  world: null,
+  tracers: [],
+  flashes: [],
+  message: '',
+  messageT: 0,
+  deadT: 0,
+  shot: params.get('shot') || '',
+  seed,
+  city,
+  rng,
+  sfx,
+  input,
+};
 
-  function boot() {
-    if (booted) return;
-    booted = true;
-    canvas = document.getElementById('game');
-    NBN.canvas = canvas;
-    ctx = canvas.getContext('2d');
-    resize();
-    NBN.city.buildCity();
-    const save = NBN.save.load();
-    NBN.world.init(save);
-    NBN.missions.initFromSave(save);
-    // Cache the save for the title screen: drawing it read localStorage
-    // on every frame, which is pointless work 60 times a second.
-    titleSave = save;
-    const S = NBN.world.getState();
-    camera.x = S.player.x;
-    camera.y = S.player.y;
-    window.addEventListener('mousedown', () => NBN.audio.unlock(), { once: true });
-    window.addEventListener('keydown', () => NBN.audio.unlock(), { once: true });
-    requestAnimationFrame(frame);
-  }
+state.world = createWorld(city, rng, state);
+spawnSafe(state, city, rng);
+const saved = loadSave();
+if (saved && !state.shot) {
+  state.money = saved.money ?? state.money;
+  state.missionIdx = Math.min(saved.missionIdx ?? 0, MISSIONS.length);
+}
 
-  function startGame() {
-    screen = 'playing';
-    NBN.audio.unlock();
-    NBN.audio.ensure();
-    NBN.audio.startEngine();
-    NBN.audio.startSiren();
-    NBN.audio.startMusic();
-    const S = NBN.world.getState();
-    const M = NBN.missions.getState();
-    if (!M.active && M.index < NBN.MISSIONS.length) {
-      NBN.world.say('Press Enter to take your first job from Marla Voss.', 6);
+function announce(text) {
+  state.message = text;
+  state.messageT = 4;
+  if (statusEl) statusEl.textContent = text;
+}
+
+function addWanted(amount) {
+  state.wantedHeat = Math.min(100, state.wantedHeat + amount);
+  state.wanted = Math.min(5, Math.floor(state.wantedHeat / 20) + (state.wantedHeat > 0 ? 1 : 0));
+  if (state.wantedHeat <= 0) state.wanted = 0;
+}
+
+function playerPos() {
+  const p = state.player;
+  if (p.inCar) return { x: p.inCar.x, y: p.inCar.y };
+  return { x: p.x, y: p.y };
+}
+
+function collideBuildings(x, y, r) {
+  let nx = x;
+  let ny = y;
+  for (const b of city.buildings) {
+    const cx = Math.max(b.x, Math.min(nx, b.x + b.w));
+    const cy = Math.max(b.y, Math.min(ny, b.y + b.h));
+    const dx = nx - cx;
+    const dy = ny - cy;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < r * r && d2 > 0.0001) {
+      const d = Math.sqrt(d2);
+      nx = cx + (dx / d) * r;
+      ny = cy + (dy / d) * r;
+    } else if (d2 <= 0.0001) {
+      ny = b.y - r;
     }
-    // Screenshot staging runs once, right after the game starts.
-    const shot = NBN.shots.shotParam();
-    if (shot > 0 && !shotApplied) {
-      shotApplied = true;
-      NBN.shots.applyShot(shot);
-      camera.x = S.player.x;
-      camera.y = S.player.y;
-    }
-    // Signal to headless harnesses that the game has started and the
-    // first playing frame is about to render.
-    window.__NBN_READY__ = true;
   }
+  nx = Math.max(r, Math.min(city.size - r, nx));
+  ny = Math.max(r, Math.min(city.size - r, ny));
+  return { x: nx, y: ny };
+}
 
-  function frame(t) {
-    requestAnimationFrame(frame);
-    const dt = Math.min(0.05, (t - lastT) / 1000 || 0.016);
-    lastT = t;
-    const S = NBN.world.getState();
-
-    if (screen === 'title') {
-      drawTitle();
-      if (NBN.input.hit('Enter') || NBN.input.mouse.clicked) startGame();
-      NBN.input.endFrame();
-      return;
-    }
-    if (screen === 'playing') {
-      if (NBN.input.hit('KeyP') || NBN.input.hit('Escape')) {
-        screen = 'paused';
-        NBN.input.endFrame();
-        return;
-      }
-      if (NBN.input.hit('Enter')) NBN.missions.tryStartNext();
-      NBN.world.update(dt);
-      if (S.over) {
-        screen = 'over';
-        NBN.save.save(S);
-      }
-      const M = NBN.missions.getState();
-      if (M.failed) screen = 'failed';
-    } else if (screen === 'paused') {
-      drawPaused();
-      // Silence the engine hum and siren while paused — the world is not
-      // updating, so the last gain would drone on forever otherwise.
-      NBN.audio.setEngine(0, false);
-      NBN.audio.setSiren(false);
-      if (NBN.input.hit('KeyP') || NBN.input.hit('Escape') || NBN.input.hit('Enter')) screen = 'playing';
-      NBN.input.endFrame();
-      return;
-    } else if (screen === 'failed') {
-      drawFailed();
-      if (NBN.input.hit('Enter') || NBN.input.hit('KeyR')) {
-        NBN.missions.retryFailed();
-        screen = 'playing';
-      }
-      NBN.input.endFrame();
-      return;
-    } else if (screen === 'over') {
-      drawOver();
-      if (NBN.input.hit('Enter') || NBN.input.hit('KeyR')) {
-        restart();
-      }
-      NBN.input.endFrame();
-      return;
-    }
-
-    // Camera: smooth follow, clamped to the world so no void shows, plus shake.
-    const p = S.player;
-    camera.x = NBN.lerp(camera.x, p.x, Math.min(1, dt * 5));
-    camera.y = NBN.lerp(camera.y, p.y, Math.min(1, dt * 5));
-    const vw = canvas.width;
-    const vh = canvas.height;
-    camera.x = NBN.clamp(camera.x, vw / 2, CFG.WORLD - vw / 2);
-    camera.y = NBN.clamp(camera.y, vh / 2, CFG.WORLD - vh / 2);
-    const shx = S.shake > 0 ? (Math.random() - 0.5) * S.shake : 0;
-    const shy = S.shake > 0 ? (Math.random() - 0.5) * S.shake : 0;
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, vw, vh);
-    ctx.save();
-    ctx.translate(vw / 2 - camera.x + shx, vh / 2 - camera.y + shy);
-    NBN.render.drawWorld(ctx, camera, vw, vh);
-    ctx.restore();
-    NBN.minimap.drawMinimap(ctx, vw, vh);
-    NBN.hud.drawHud(ctx, vw, vh);
-    NBN.input.endFrame();
+function nearestCar(x, y, maxD) {
+  let best = null;
+  let bd = maxD;
+  for (const c of state.world.cars) {
+    const d = Math.hypot(c.x - x, c.y - y);
+    if (d < bd) { bd = d; best = c; }
   }
+  return best;
+}
 
-  function restart() {
-    const S = NBN.world.getState();
-    // Keep money and completed missions; respawn safe in the park.
-    NBN.world.init({ money: S.player.money, missionsDone: S.missionsDone.slice(), bestWanted: S.bestWanted });
-    NBN.missions.initFromSave({ missionsDone: S.missionsDone.slice() });
-    const S2 = NBN.world.getState();
-    camera.x = S2.player.x;
-    camera.y = S2.player.y;
-    screen = 'playing';
-    NBN.world.say('Back on your feet. Neon Bay is still waiting.', 4);
-  }
-
-  function panel(title, lines, accent) {
-    const vw = canvas.width;
-    const vh = canvas.height;
-    ctx.fillStyle = 'rgba(8,10,24,0.82)';
-    ctx.fillRect(0, 0, vw, vh);
-    ctx.fillStyle = accent;
-    ctx.font = 'bold 52px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(title, vw / 2, vh / 2 - 60);
-    ctx.fillStyle = '#fff';
-    ctx.font = '18px sans-serif';
-    lines.forEach((ln, i) => ctx.fillText(ln, vw / 2, vh / 2 - 10 + i * 30));
-    ctx.textAlign = 'left';
-  }
-
-  function drawTitle() {
-    const vw = canvas.width;
-    const vh = canvas.height;
-    // Dusk gradient sky over the city silhouette.
-    const g = ctx.createLinearGradient(0, 0, 0, vh);
-    g.addColorStop(0, '#1b1035');
-    g.addColorStop(0.55, '#c94b7a');
-    g.addColorStop(1, '#ff9d5c');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, vw, vh);
-    // City skyline.
-    ctx.fillStyle = '#120a24';
-    let x = 0;
-    const rng = NBN.rng;
-    while (x < vw) {
-      const w = 60 + rng() * 90;
-      const h = 120 + rng() * 180;
-      ctx.fillRect(x, vh - h - 120, w, h + 120);
-      x += w + 8;
-    }
-    // Neon windows.
-    ctx.fillStyle = '#22e6ff';
-    for (let i = 0; i < 40; i++) ctx.fillRect(rng() * vw, vh - 120 - rng() * 260, 6, 8);
-    ctx.fillStyle = '#ff2e88';
-    ctx.font = 'bold 84px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('NEON BAY', vw / 2, 210);
-    ctx.fillStyle = '#ffe14d';
-    ctx.font = 'bold 34px sans-serif';
-    ctx.fillText('NIGHTS', vw / 2, 258);
-    ctx.fillStyle = '#fff';
-    ctx.font = '18px sans-serif';
-    ctx.fillText('A driver for hire. Five jobs from Marla Voss. One city that never sleeps.', vw / 2, 320);
-    ctx.font = '16px sans-serif';
-    ctx.fillStyle = '#cfd2d8';
-    ctx.fillText('WASD move / drive · Mouse aim · E steal / exit car · Space fight · P pause · M mute', vw / 2, 380);
-    const save = titleSave;
-    if (save && save.missionsDone.length > 0) {
-      ctx.fillStyle = '#7CFF6B';
-      ctx.fillText(`Welcome back — $${save.money} saved, ${save.missionsDone.length} of 5 jobs done.`, vw / 2, 420);
-    }
-    const blink = Math.floor(Date.now() / 500) % 2 === 0;
-    if (blink) {
-      ctx.fillStyle = '#ffe14d';
-      ctx.font = 'bold 22px sans-serif';
-      ctx.fillText('Press Enter to start', vw / 2, 500);
-    }
-    ctx.textAlign = 'left';
-  }
-
-  function drawPaused() {
-    panel('PAUSED', ['The city waits for no one — except now.', '', 'Enter / P — resume', 'M — mute'], '#22e6ff');
-  }
-
-  function drawFailed() {
-    const M = NBN.missions.getState();
-    const f = M.failed;
-    panel('JOB FAILED', [f ? f.title : 'Mission failed', f ? f.reason : '', '', 'Enter — retry the job'], '#ff3b30');
-  }
-
-  function drawOver() {
-    const S = NBN.world.getState();
-    const title = S.over === 'busted' ? 'BUSTED' : 'WASTED';
-    panel(title, [
-      S.over === 'busted' ? 'The Bay PD caught up with you.' : 'Neon Bay got the better of you this time.',
-      `Cash kept: $${Math.floor(S.player.money)} · Jobs done: ${S.missionsDone.length} of 5`,
-      '',
-      'Enter — back on your feet',
-    ], '#ff3b30');
-  }
-
-  NBN.camera = camera;
-  NBN.main = { boot, startGame };
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot);
+function toggleCar() {
+  const p = state.player;
+  if (p.inCar) {
+    const car = p.inCar;
+    p.x = car.x + Math.cos(car.angle + Math.PI / 2) * 30;
+    p.y = car.y + Math.sin(car.angle + Math.PI / 2) * 30;
+    const fixed = collideBuildings(p.x, p.y, 12);
+    p.x = fixed.x; p.y = fixed.y;
+    car.driver = null;
+    car.speed = 0;
+    p.inCar = null;
+    sfx.door();
   } else {
-    boot();
+    const car = nearestCar(p.x, p.y, 56);
+    if (car) {
+      if (car.police) { announce('That is a police cruiser — too hot to steal.'); return; }
+      const wasTraffic = car.traffic;
+      car.traffic = false;
+      car.driver = 'player';
+      p.inCar = car;
+      p.x = car.x; p.y = car.y;
+      sfx.door();
+      if (wasTraffic) { addWanted(18); announce('Car stolen! Police are watching.'); }
+      else announce('You got in. Drive with W/S, steer with A/D.');
+    }
   }
-})();
+}
+
+function shoot() {
+  const p = state.player;
+  if (!state.hasPistol || state.ammo <= 0 || p.inCar) return;
+  state.ammo--;
+  sfx.shot();
+  const pp = playerPos();
+  const mx = pp.x + Math.cos(p.angle) * 16;
+  const my = pp.y + Math.sin(p.angle) * 16;
+  state.flashes.push({ x: mx, y: my, t: 0.07 });
+  let endX = pp.x + Math.cos(p.angle) * 520;
+  let endY = pp.y + Math.sin(p.angle) * 520;
+  let hit = null;
+  let hitD = 520;
+  const test = (ox, oy, r, obj, kind) => {
+    const vx = Math.cos(p.angle);
+    const vy = Math.sin(p.angle);
+    const rx = ox - pp.x;
+    const ry = oy - pp.y;
+    const along = rx * vx + ry * vy;
+    if (along < 0 || along > hitD) return;
+    const perp = Math.abs(rx * -vy + ry * vx);
+    if (perp < r) { hit = { obj, kind }; hitD = along; endX = pp.x + vx * along; endY = pp.y + vy * along; }
+  };
+  for (const ped of state.world.peds) if (ped.alive) test(ped.x, ped.y, 12, ped, 'ped');
+  for (const car of state.world.cars) test(car.x, car.y, 20, car, 'car');
+  for (const b of city.buildings) {
+    const cx = Math.max(b.x, Math.min(endX, b.x + b.w));
+    const cy = Math.max(b.y, Math.min(endY, b.y + b.h));
+    if (Math.hypot(endX - cx, endY - cy) < 4) { /* wall hit visual only */ }
+  }
+  state.tracers.push({ x1: mx, y1: my, x2: endX, y2: endY, t: 0.09 });
+  if (hit && hit.kind === 'ped') {
+    hit.obj.alive = false;
+    hit.obj.downT = 8;
+    state.money += 15;
+    addWanted(30);
+    announce('Pedestrian down. Wanted level rising!');
+  } else if (hit && hit.kind === 'car') {
+    hit.obj.hp -= 25;
+    addWanted(hit.obj.police ? 35 : 12);
+    if (hit.obj.hp <= 0) { hit.obj.speed = 0; hit.obj.dead = true; }
+  } else {
+    addWanted(6);
+  }
+}
+
+function die() {
+  state.mode = 'dead';
+  state.deadT = 0;
+  sfx.crash();
+  announce('You were taken out. Respawning at the garage…');
+}
+
+function respawn() {
+  const penalty = Math.min(100, Math.max(25, Math.floor(state.money * 0.1)));
+  state.money = Math.max(0, state.money - penalty);
+  state.health = 100;
+  state.wanted = 0;
+  state.wantedHeat = 0;
+  state.player.inCar = null;
+  spawnSafe(state, city, rng);
+  state.mode = 'play';
+  announce('Back on your feet. Hospital fee $' + penalty + '.');
+  storeSave(state);
+}
+
+function update(dt) {
+  state.time += dt;
+  if (state.messageT > 0) state.messageT -= dt;
+  for (const t of state.tracers) t.t -= dt;
+  state.tracers = state.tracers.filter((t) => t.t > 0);
+  for (const f of state.flashes) f.t -= dt;
+  state.flashes = state.flashes.filter((f) => f.t > 0);
+
+  if (state.mode === 'dead') {
+    state.deadT += dt;
+    if (state.deadT > 2.2 || input.consume('enter') || input.clicked) respawn();
+    input.clicked = false;
+    return;
+  }
+  if (state.mode !== 'play') return;
+
+  if (input.consume('pause')) { state.mode = 'pause'; return; }
+  if (input.consume('use')) toggleCar();
+  input.clicked = false; // clicks are menu/death inputs; never carry a stale one into play
+  // Pistol fire rate: one shot per 0.18s while the mouse is held.
+  if (input.mouseDown && !state.player.inCar && state.time - (state._lastShot || 0) > 0.18) {
+    state._lastShot = state.time;
+    shoot();
+  }
+
+  const p = state.player;
+  const pp = playerPos();
+  // Aim follows mouse in world space.
+  const mwx = state.cam.x + input.mouse.x;
+  const mwy = state.cam.y + input.mouse.y;
+  if (!p.inCar) p.angle = Math.atan2(mwy - pp.y, mwx - pp.x);
+
+  if (p.inCar) {
+    const car = p.inCar;
+    const fwd = (input.down('up') ? 1 : 0) + (input.down('down') ? -0.6 : 0);
+    const steer = (input.down('left') ? -1 : 0) + (input.down('right') ? 1 : 0);
+    const accel = fwd >= 0 ? CFG.carAccel : CFG.carBrake;
+    car.speed += fwd * accel * dt;
+    car.speed -= car.speed * CFG.carDrag * dt;
+    car.speed = Math.max(-CFG.carReverse, Math.min(CFG.carMax, car.speed));
+    // Low-speed steering: always steerable, no dead zone.
+    const steerPower = 1.9 * (0.45 + Math.min(1, Math.abs(car.speed) / 140));
+    if (steer !== 0) {
+      const dir = car.speed < -4 ? -1 : 1;
+      car.angle += steer * steerPower * dt * dir;
+    }
+    if (input.down('handbrake')) car.speed -= car.speed * 2.2 * dt;
+    const nx = car.x + Math.cos(car.angle) * car.speed * dt;
+    const ny = car.y + Math.sin(car.angle) * car.speed * dt;
+    const fixed = collideBuildings(nx, ny, 18);
+    if (fixed.x !== nx || fixed.y !== ny) {
+      if (Math.abs(car.speed) > 160) { state.health -= 6; sfx.crash(); }
+      car.speed *= 0.55;
+    }
+    car.x = fixed.x; car.y = fixed.y;
+    p.x = car.x; p.y = car.y; p.angle = car.angle;
+    sfx.engine(Math.abs(car.speed) / CFG.carMax);
+    // Run-over peds.
+    for (const ped of state.world.peds) {
+      if (ped.alive && Math.hypot(ped.x - car.x, ped.y - car.y) < 22 && Math.abs(car.speed) > 40) {
+        ped.alive = false; ped.downT = 8; addWanted(25); state.health -= 2;
+      }
+    }
+  } else {
+    let mx = (input.down('right') ? 1 : 0) - (input.down('left') ? 1 : 0);
+    let my = (input.down('down') ? 1 : 0) - (input.down('up') ? 1 : 0);
+    const len = Math.hypot(mx, my) || 1;
+    const run = input.down('run') ? 1.5 : 1;
+    const sp = CFG.walkSpeed * run;
+    const nx = p.x + (mx / len) * sp * dt * (mx || my ? 1 : 0);
+    const ny = p.y + (my / len) * sp * dt * (mx || my ? 1 : 0);
+    const fixed = collideBuildings(nx, ny, 12);
+    p.x = fixed.x; p.y = fixed.y;
+    if (mx || my) p.walkPhase += dt * 10;
+    sfx.engine(0);
+  }
+
+  updateTraffic(state, city, rng, dt);
+  updatePeds(state, city, rng, dt);
+  updatePolice(state, city, rng, dt);
+
+  // Wanted decay when unseen and slow.
+  const policeNear = state.world.cars.some((c) => c.police && !c.dead && Math.hypot(c.x - pp.x, c.y - pp.y) < 420);
+  if (!policeNear && state.wantedHeat > 0) state.wantedHeat = Math.max(0, state.wantedHeat - dt * 3.2);
+  state.wanted = state.wantedHeat <= 0 ? 0 : Math.min(5, 1 + Math.floor(state.wantedHeat / 22));
+  if (policeNear && state.wanted > 0) sfx.siren();
+
+  // Pickups.
+  for (const pk of state.world.pickups) {
+    if (pk.taken) continue;
+    if (Math.hypot(pk.x - pp.x, pk.y - pp.y) < 30) {
+      if (pk.kind === 'pistol') { state.hasPistol = true; state.ammo += 60; pk.taken = true; sfx.pickup(); announce('Pistol picked up! Aim with mouse, click to shoot.'); }
+      if (pk.kind === 'cash') { state.money += 50; pk.taken = true; sfx.cash(); announce('+$50 cash drop.'); }
+      if (pk.kind === 'health') { state.health = Math.min(100, state.health + 40); pk.taken = true; sfx.pickup(); announce('+40 health.'); }
+    }
+  }
+
+  advanceMission(state, city, dt, announce, sfx);
+
+  if (state.health <= 0) { state.health = 0; die(); return; }
+  if (Math.floor(state.time * 2) !== Math.floor((state.time - dt) * 2)) storeSave(state);
+}
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.05, (now - (frame.last || now)) / 1000 || 0.016);
+  frame.last = now;
+
+  if (state.mode === 'menu') {
+    if (input.consume('enter') || input.clicked) { state.mode = 'play'; sfx.resume(); announce('Welcome to Neon Bay. Follow the gold marker.'); }
+    input.clicked = false;
+  } else if (state.mode === 'pause') {
+    if (input.consume('pause') || input.consume('enter') || input.clicked) state.mode = 'play';
+    input.clicked = false;
+  } else {
+    update(dt);
+  }
+
+  const pp = playerPos();
+  state.cam.x = Math.max(0, Math.min(city.size - canvas.width, pp.x - canvas.width / 2));
+  state.cam.y = Math.max(0, Math.min(city.size - canvas.height, pp.y - canvas.height / 2));
+  if (city.size < canvas.width) state.cam.x = 0;
+  if (city.size < canvas.height) state.cam.y = 0;
+
+  drawWorld(ctx, canvas, state, city);
+  if (state.mode === 'play' || state.mode === 'pause' || state.mode === 'dead') {
+    drawHud(ctx, canvas, state);
+    drawMinimap(ctx, canvas, state, city);
+  }
+  drawMenus(ctx, canvas, state);
+}
+
+applyShot(state, city, rng, announce);
+if (state.shot) state.mode = 'play';
+window.__neon = state;
+window.__neonReady = true;
+requestAnimationFrame(frame);

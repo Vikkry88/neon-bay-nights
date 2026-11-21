@@ -1,59 +1,55 @@
 # Neon Bay Nights
 
-[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![rank](https://make.fun/badge/gta6-01/Vikkry88/neon-bay-nights/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![reward](https://make.fun/badge/gta6-01/Vikkry88/neon-bay-nights/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+![gta6-01](https://make.fun/badge/gta6-01.svg)
+![rank](https://make.fun/badge/gta6-01/Vikkry88/neon-bay-nights/rank.svg)
+![reward](https://make.fun/badge/gta6-01/Vikkry88/neon-bay-nights/reward.svg)
 
-A 2D top-down open-world crime game, built for the [make.fun gta6-01 bounty](https://make.fun/bounty/gta6-01). You are a driver for hire in **Neon Bay**, a sun-soaked coastal city. Take jobs from the fixer **Marla Voss**, steal cars, outrun the Bay PD, and work your way up to the Bay Trust Job.
+A 2D top-down open-world crime game set in **Neon Bay**, built for the
+[make.fun "Make GTA 6" bounty (gta6-01)](https://make.fun/bounty/gta6-01).
+Everything here is original — no Rockstar/GTA names, characters, maps, art or
+music. Play it in the browser: walk the neon streets, steal cars, run five
+fixer missions, grab the pistol, and outrun the police.
 
-Everything is original: the city, the characters, the story, the art and the music are all made for this game. No assets from any commercial game.
+**Play:** https://vikkry88.github.io/neon-bay-nights/
 
-## The city
+## How to play
 
-Neon Bay is a full open world: a street grid with traffic lights, beach and boardwalk on the coast, parks, a garage, a safehouse, the Salt Air bar, and the Bay Trust vault. Traffic cars cruise the streets, pedestrians walk the sidewalks, and the Bay PD patrols — until you give them a reason not to.
+- **WASD / Arrow keys** — walk on foot, drive when in a car
+- **E** — enter / exit a car (steal parked cars, or jack traffic cars)
+- **Mouse** — aim · **Click** — shoot (find the glowing **PISTOL** beacon first)
+- **Shift** — run · **Space** — handbrake · **P / Esc** — pause · **Enter** — start / respawn
 
-## Missions (from Marla Voss, in order)
+Follow the **gold marker** and the stage-aware mission banner at the top:
 
-1. **First Wheels — $150.** Steal any car and bring it to the garage.
-2. **Sunset Run — $300.** Deliver a package to the Salt Air bar on the beach within 90 seconds.
-3. **The Getaway — $450.** Pick up Rico, lose the police, reach the safehouse.
-4. **Repo Man — $600.** Steal the marked yellow coupe and deliver it to the garage in one piece — below 30% condition and the job is blown.
-5. **The Bay Trust Job — $1000.** Grab the vault cash, lose the whole Bay PD, escape to the safehouse.
+1. **Night Package** — pick up a package, deliver it to the **GARAGE** yellow ring
+2. **Hot Wheels** — steal the marked target car, deliver it to the garage
+3. **Cash Drops** — collect 3 cash drops across the city
+4. **Lose the Heat** — reach the hideout and shake your wanted stars
+5. **Bay Courier** — pick up a parcel and run it to the drop-off
 
-## Features
+Crime raises your **wanted level** (1–5 stars). Police cruisers chase you but
+keep a safe standoff — they never pin you, so you can always drive away, even
+slowly. Traffic keeps flowing and never blocks a street forever. If you are
+taken out, you respawn at the garage with a small hospital fee. Progress
+(money + mission) saves automatically in your browser.
 
-- Open world on foot and by car, with a smooth following camera
-- Cars to steal (walk up and press **E**), arcade driving that answers at any speed
-- Wanted level, 1–5 stars: black-and-white police cruisers chase and ram (rarely, and never while you are parked), foot cops arrest; lay low to cool off
-- Combat on foot: punch (**Space**) and a pistol pickup by the garage, marked by a glowing beacon, with ammo in the HUD
-- HUD with live minimap, wanted stars, cash, health, speed, mission objective and distance to it
-- Title screen, pause, mission complete/fail screens, WASTED / BUSTED screens
-- Progress saved to localStorage (money and missions completed)
-- Particles, explosions, screen shake, synthesized WebAudio sound effects and a music loop (**M** to mute)
-
-## Controls
-
-| Key | Action |
-| --- | --- |
-| W A S D / arrows | Move / drive |
-| Mouse | Aim on foot, click to shoot |
-| Space | Punch / shoot (with pistol) |
-| E | Steal / enter car, exit car |
-| Shift | Sprint on foot |
-| P / Esc | Pause |
-| M | Mute |
-| Enter | Start / continue |
-
-## How to run
-
-No build step, no network needed at runtime — every file is local.
+## Run locally
 
 ```sh
-node serve.ts
+node serve.ts          # serves game/ on http://localhost:8080
+mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts   # build the make.fun dossier
 ```
 
-Then open http://localhost:8080 in a desktop browser. Or serve `game/` with any static file server.
+Static files only — no build step, no network requests. The game lives in
+`game/` (`index.html` + ES modules in `game/src/`), with synthesized WebAudio
+sound effects (engine, shots, sirens, cash). Screenshots are in `screenshots/`.
 
-## License
+## Tech notes
 
-MIT — see [LICENSE](LICENSE).
+- Canvas 2D, keyboard + mouse, seeded city generation (street grid, buildings,
+  neon signs, parks)
+- Police AI with a 72px minimum standoff and corner-pocket back-off
+- Jam-proof traffic (stuck cars respawn), low-speed steering with no dead zone
+- All mission targets snap to streets so they are always reachable by car
+- HUD (health, money, wanted stars, objective), minimap, start/pause/death
+  menus, localStorage save

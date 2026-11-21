@@ -1,92 +1,65 @@
-// Neon Bay Nights — shots.js
-// One job: staged scenes for the four screenshots (?shot=1..4).
-// Each shot sets the world up so one frame shows a different system:
-// 1 — the city on foot; 2 — a driving chase with wanted stars, minimap and
-// an objective; 3 — a mission in progress; 4 — police closing in.
-(function () {
-  'use strict';
+// Neon Bay Nights — deterministic screenshot scenes (?shot=cover|chase|mission|night).
+// Each scene positions the player/cars so headless captures show real gameplay.
+import { snapToStreet } from './city.js';
 
-  const NBN = window.NBN;
-
-  function applyShot(n) {
-    const S = NBN.world.getState();
-    const M = NBN.missions.getState();
-    const p = S.player;
-    if (n === 1) {
-      // On foot in the city, daytime, no heat.
-      p.x = 1200;
-      p.y = 1000;
-      p.angle = Math.PI / 4;
-      p.inCar = null;
-      p.wanted = 0;
-      NBN.world.say('Welcome to Neon Bay — steal a car, find work, stay free.', 6);
-    } else if (n === 2) {
-      // Driving chase: player in a car, wanted 3, cops behind, mission 2 live.
-      const car = NBN.world.nearestCar(100000) || S.cars[0];
-      p.inCar = car;
-      car.kind = 'player';
-      car.ai = false;
-      car.speed = 320;
-      car.x = 1500;
-      car.y = 1200;
-      car.angle = 0;
-      p.x = car.x;
-      p.y = car.y;
-      p.angle = 0;
-      p.wanted = 3;
-      p.lastCrime = S.time;
-      for (let i = 0; i < 3; i++) {
-        const c = NBN.world.makeCar(car.x - 120 - i * 70, car.y + 60 + i * 40, 0, 'police', '#f2f2f2');
-        c.speed = 300;
-        S.cars.push(c);
-      }
-      M.index = 1;
-      M.active = null;
-      NBN.missions.tryStartNext();
-    } else if (n === 3) {
-      // Mission in progress: Sunset Run, package on board, beach ahead.
-      const car = S.cars.find((c) => c.kind === 'parked') || S.cars[0];
-      p.inCar = car;
-      car.kind = 'player';
-      car.ai = false;
-      car.speed = 260;
-      car.x = 2300;
-      car.y = 1600;
-      car.angle = 0;
-      p.x = car.x;
-      p.y = car.y;
-      p.angle = 0;
-      M.index = 1;
-      M.active = null;
-      NBN.missions.tryStartNext();
-      if (M.active) M.active.timer = 62;
-    } else if (n === 4) {
-      // Police after the player on foot: wanted 4, cruisers and a foot cop.
-      p.x = 1600;
-      p.y = 1800;
-      p.angle = -Math.PI / 2;
-      p.inCar = null;
-      p.wanted = 4;
-      p.lastCrime = S.time;
-      for (let i = 0; i < 3; i++) {
-        const c = NBN.world.makeCar(p.x + 140 + i * 80, p.y - 60 + i * 50, Math.PI, 'police', '#f2f2f2');
-        c.speed = 200;
-        S.cars.push(c);
-      }
-      S.cops.push({ x: p.x + 90, y: p.y + 70, angle: 0, stun: 0, arrest: 0 });
-      NBN.world.say('The whole Bay PD is on you — run!', 6);
+export function applyShot(state, city, rng, announce) {
+  const shot = state.shot;
+  if (!shot) return;
+  const p = state.player;
+  if (shot === 'cover' || shot === 'start') {
+    // Hero shot: player beside a car near neon signs, mission marker visible.
+    const spot = snapToStreet(city, city.garage.x + 320, city.garage.y - 320);
+    p.x = spot.x; p.y = spot.y; p.angle = -0.4;
+    state.money = 1250;
+    state.health = 100;
+    state.wanted = 0;
+    state.wantedHeat = 0;
+    announce('Neon Bay Nights — press ENTER to play');
+  } else if (shot === 'chase' || shot === 'play') {
+    // Police chase: player driving, two cruisers shadowing at standoff distance.
+    const spot = snapToStreet(city, 1600, 1600);
+    let car = state.world.cars.find((c) => !c.police && !c.traffic);
+    if (!car) car = state.world.cars[0];
+    car.x = spot.x; car.y = spot.y; car.angle = 0; car.speed = 240; car.traffic = false; car.driver = 'player';
+    p.inCar = car; p.x = car.x; p.y = car.y;
+    state.wantedHeat = 55;
+    state.wanted = 3;
+    state.money = 860;
+    state.hasPistol = true; state.ammo = 42;
+    // Place two cruisers behind at safe standoff.
+    let placed = 0;
+    for (const c of state.world.cars) {
+      if (c === car) continue;
+      if (placed >= 2) break;
+      c.police = true; c.traffic = false; c.dead = false; c.color = '#101018';
+      c.x = spot.x - 130 - placed * 110;
+      c.y = spot.y + (placed === 0 ? -40 : 50);
+      c.angle = 0; c.speed = 220;
+      placed++;
     }
+    announce('Police chase — keep driving!');
+  } else if (shot === 'mission') {
+    // Mission view: on foot near the package marker with pistol beacon nearby.
+    const spot = snapToStreet(city, 960, 2240);
+    p.x = spot.x; p.y = spot.y; p.angle = 0.6;
+    state.missionIdx = 0;
+    state.missionStage = 0;
+    state.money = 540;
+    state.hasPistol = true; state.ammo = 30;
+    state.wanted = 1; state.wantedHeat = 22;
+    announce('Mission: pick up the package');
+  } else if (shot === 'night' || shot === 'end') {
+    // Night cruise: in a car downtown with cash collected.
+    const spot = snapToStreet(city, 2240, 960);
+    let car = state.world.cars.find((c) => !c.police && !c.traffic);
+    if (!car) car = state.world.cars[0];
+    car.x = spot.x; car.y = spot.y; car.angle = Math.PI / 2; car.speed = 180; car.traffic = false; car.driver = 'player';
+    p.inCar = car; p.x = car.x; p.y = car.y;
+    state.missionIdx = 2;
+    state.missionStage = 1;
+    state.money = 1980;
+    state.health = 82;
+    state.wanted = 0; state.wantedHeat = 0;
+    announce('Cash drops: 1 of 3 collected');
   }
-
-  function shotParam() {
-    try {
-      const q = new URLSearchParams(window.location.search);
-      const n = parseInt(q.get('shot') || '', 10);
-      return n >= 1 && n <= 4 ? n : 0;
-    } catch (err) {
-      return 0;
-    }
-  }
-
-  NBN.shots = { applyShot, shotParam };
-})();
+}
