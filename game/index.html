@@ -1,19 +1,17 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" href="data:,">
-<title>Neon Bay Nights — open-world crime in Neon Bay</title>
+<title>Neon Bay Nights</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1020; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
-  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  html, body { margin: 0; padding: 0; background: #0b1020; height: 100%; overflow: hidden; }
+  #game { display: block; margin: 0 auto; background: #1a2b4a; }
+  #hint { color: #9fb7e8; font-family: monospace; text-align: center; font-size: 13px; padding: 6px; }
 </style>
 </head>
 <body>
-<canvas id="game" aria-label="Neon Bay Nights: explore Neon Bay on foot and by car, run Marlowe's jobs, outrun the police"></canvas>
-<p id="status" role="status" aria-live="polite"></p>
-<script type="module" src="./src/main.js"></script>
+<canvas id="game" width="1280" height="720"></canvas>
+<div id="hint">WASD move/drive · E car · mouse aim/shoot · Q weapon wheel · R radio · P pause · M mute</div>
+<script type="module" src="src/main.js"></script>
 </body>
 </html>

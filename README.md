@@ -1,44 +1,47 @@
 # Neon Bay Nights
 
-An original top-down open-world crime game for the browser, built for make.fun's
-gta6-01 bounty ("Make GTA 6"). You are a fixer-for-hire in **Neon Bay**, a
-sun-soaked coastal city of neon signs, beachfront boulevards and a working
-marina. Your contact **Marlowe** feeds you ten story jobs across four districts
-— Downtown, Beachfront, Old Town and the Marina — while the Neon Bay police
-escalate from Patrol cars to Interceptors, Roadblocks, Air Support and Maximum
-Response.
+[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![rank](https://make.fun/badge/gta6-01/Vikkry88/neon-bay-nights/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![reward](https://make.fun/badge/gta6-01/Vikkry88/neon-bay-nights/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-Everything is original: the city, names, story, art and music were made for this
-game. No assets, names or maps from any commercial game.
+An open-world crime game built for the [make.fun gta6-01 bounty](https://make.fun/bounty/gta6-01).
+Explore **Neon Bay** — a sun-soaked top-down city of beachfront, marina, downtown
+towers and old-town streets — on foot and by car. Run ten story jobs for the
+fixer **Marlowe**, build respect in four districts, and stay ahead of a five-tier
+police dispatch that escalates from patrol cars to roadblocks and helicopter air
+support.
+
+## Features
+
+- A living city: traffic with working lights, pedestrians, parked cars, parks,
+  beaches and neon signs, all drawn in code — no external assets.
+- Steal and drive any car (E), or run the streets on foot.
+- Ten sequential story jobs with briefs, timers and cash rewards ($500–$5,000).
+- Five wanted stars with named dispatch tiers: Patrol, Interceptor, Roadblock,
+  Air Support, Maximum Response — plus a helicopter with a spotlight at 3+ stars.
+- Weapon wheel (hold Q, or keys 1–4): Fists, Pistol, SMG, Shotgun, with pickups
+  and ammo.
+- District respect across Downtown, Beachfront, Old Town and Marina.
+- Car radio with two stations (Neon FM, Bay Talk) and a full HUD: minimap,
+  speedometer, mission timer, dispatch banner and Marlowe's dialogue box.
+- Pause (P), mute (M), and progress saved in localStorage.
 
 ## Play
 
-Open `game/index.html` in a desktop browser (or run `node serve.ts` and visit
-http://localhost:8080). No network is used at runtime; every file is local.
+Serve the `game/` folder with any static file server, or run the bundled one:
 
-- **Move / drive:** WASD or arrow keys (Shift to sprint on foot)
-- **Enter / exit car:** E — steal any car, parked or in traffic
-- **Aim & fire:** mouse aim, hold click to shoot
-- **Weapon wheel:** hold Q, or keys 1–4 (Fists, Pistol, SMG, Shotgun)
-- **Radio:** R cycles Neon FM / Bay Talk / Off
-- **Pause:** P or Esc · **Mute:** M
-- **Restart after death:** Enter
+```
+node serve.ts
+```
 
-## What's inside
+Then open http://localhost:8080 in a desktop browser. Keyboard and mouse:
+WASD/arrows to move and drive, E to enter/exit cars, Shift to sprint/boost,
+Space to brake, mouse to aim and shoot, Q for the weapon wheel, R for radio.
 
-- A full city grid with beach and sea, parks, buildings, traffic lights, neon
-  signs, dense traffic, pedestrians and parked cars.
-- On-foot and driving with jam-proof traffic and police that never pin you:
-  standoff distance, gentle rams with back-off, corner-pocket escape.
-- A 1–5 star wanted system with named dispatch tiers, roadblocks and a police
-  helicopter with a spotlight at higher heat.
-- Ten sequential story jobs from Marlowe ($500–$5,000), district respect that
-  grows as you work each neighbourhood, a yellow garage ring that cools your
-  heat, weapon pickups, a speedometer, minimap, particles, screen shake and a
-  WebAudio soundtrack. Progress saves to localStorage.
+## Hand in
 
-## Build / hand in
+```
+mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+```
 
-`mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts` copies `game/` and
-`screenshots/` to `out/` and writes `out/dossier.json`. Screenshots are staged
-in-game with `?shot=cover|wheel|mission|police&seed=1`.
+This copies `game/` and `screenshots/` to `out/` and writes `out/dossier.json`.

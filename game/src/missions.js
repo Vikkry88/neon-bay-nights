@@ -1,108 +1,49 @@
-// Marlowe's ten story jobs for Neon Bay Nights. Each job is a sequence of
-// street-point stages (drive to / deliver / reach) with a time budget, a cash
-// reward and a district whose respect grows when the job is done. Jobs unlock
-// in order; progress is saved between sessions.
+// Neon Bay Nights — Marlowe's ten story jobs: sequential, timed, district-tagged.
 
 export const JOBS = [
-  {
-    id: 'm1', title: 'First Run', reward: 500, time: 150, district: 'downtown',
-    brief: 'Marlowe: "New face, simple work. Pick up the package downtown and bring it to me. No noise."',
-    done: 'Marlowe: "Clean. Keep that up and Neon Bay pays you well."',
-    stages: [
-      { label: 'Pick up the package', at: [1050, 630], needCar: false },
-      { label: 'Deliver to Marlowe', at: [630, 1890], needCar: false },
-    ],
-  },
-  {
-    id: 'm2', title: 'Beach Drop', reward: 750, time: 170, district: 'beachfront',
-    brief: 'Marlowe: "A cooler of product is sitting by the pier. Grab it, drop it at the beach club."',
-    done: 'Marlowe: "The club owner sends thanks. Cash is yours."',
-    stages: [
-      { label: 'Collect the cooler at the pier', at: [2520, 630], needCar: false },
-      { label: 'Drop it at the beach club', at: [2520, 1470], needCar: false },
-    ],
-  },
-  {
-    id: 'm3', title: 'Old Town Ledger', reward: 1000, time: 180, district: 'oldtown',
-    brief: 'Marlowe: "An old friend in Old Town owes me a ledger. Collect it. Drive — it is a long walk."',
-    done: 'Marlowe: "Names, numbers, leverage. Beautiful."',
-    stages: [
-      { label: 'Steal a car and drive to Old Town', at: [210, 1050], needCar: true },
-      { label: 'Bring the ledger back downtown', at: [1470, 1050], needCar: true },
-    ],
-  },
-  {
-    id: 'm4', title: 'Marina Wheels', reward: 1250, time: 190, district: 'marina',
-    brief: 'Marlowe: "A buyer at the marina wants a fast car, no questions. Any car. Deliver it running."',
-    done: 'Marlowe: "Sold before you parked it. Nice."',
-    stages: [
-      { label: 'Deliver any car to the marina buyer', at: [2520, 2730], needCar: true },
-    ],
-  },
-  {
-    id: 'm5', title: 'Neon Courier', reward: 1500, time: 160, district: 'downtown',
-    brief: 'Marlowe: "Three drops, one route, clock ticking. Downtown only. Move."',
-    done: 'Marlowe: "Fast hands. The city noticed — respect earned."',
-    stages: [
-      { label: 'Drop 1: hotel alley', at: [1470, 630], needCar: false },
-      { label: 'Drop 2: club door', at: [1890, 1050], needCar: false },
-      { label: 'Drop 3: rooftop stairs', at: [1470, 1470], needCar: false },
-    ],
-  },
-  {
-    id: 'm6', title: 'Heat Check', reward: 2000, time: 200, district: 'beachfront',
-    brief: 'Marlowe: "Pick up the stash, then lose any heat at the yellow garage ring before you come to me."',
-    done: 'Marlowe: "Cool head. That is worth more than speed."',
-    stages: [
-      { label: 'Pick up the stash', at: [2520, 1890], needCar: false },
-      { label: 'Deliver to Marlowe', at: [1050, 2310], needCar: false },
-    ],
-  },
-  {
-    id: 'm7', title: 'Old Town Muscle', reward: 2500, time: 210, district: 'oldtown',
-    brief: 'Marlowe: "Some collectors are leaning on my people in Old Town. Show up armed and settle it."',
-    done: 'Marlowe: "Old Town breathes again. So do my margins."',
-    stages: [
-      { label: 'Reach the Old Town corner', at: [210, 2310], needCar: false },
-      { label: 'Report back downtown', at: [1050, 1050], needCar: false },
-    ],
-  },
-  {
-    id: 'm8', title: 'Harbor Run', reward: 3000, time: 200, district: 'marina',
-    brief: 'Marlowe: "Boat comes in at the marina. Cargo to the warehouse, warehouse to me. Two legs."',
-    done: 'Marlowe: "Harbor money. Spend it slow."',
-    stages: [
-      { label: 'Collect cargo at the marina', at: [2520, 3150], needCar: true },
-      { label: 'Haul it to the warehouse', at: [630, 3150], needCar: true },
-      { label: 'Bring the cut to Marlowe', at: [1050, 1890], needCar: false },
-    ],
-  },
-  {
-    id: 'm9', title: 'Citywide', reward: 4000, time: 240, district: 'downtown',
-    brief: 'Marlowe: "Every district, one night. Four stops. This is how you become Neon Bay."',
-    done: 'Marlowe: "Four districts, one name: yours."',
-    stages: [
-      { label: 'Stop 1: Downtown', at: [1470, 630], needCar: false },
-      { label: 'Stop 2: Beachfront', at: [2520, 1050], needCar: false },
-      { label: 'Stop 3: Marina', at: [2520, 2730], needCar: false },
-      { label: 'Stop 4: Old Town', at: [210, 1890], needCar: false },
-    ],
-  },
-  {
-    id: 'm10', title: 'Neon Bay Nights', reward: 5000, time: 260, district: 'beachfront',
-    brief: 'Marlowe: "Last job. The big one. Pick up the case at the pier and bring it home — whatever follows you."',
-    done: 'Marlowe: "That is it. Neon Bay is yours now. Go enjoy it."',
-    stages: [
-      { label: 'Take the case at the pier', at: [2520, 630], needCar: false },
-      { label: 'Bring it home to Marlowe', at: [1050, 1470], needCar: false },
-    ],
-  },
+  { id: 'm1', title: 'First Wheels', reward: 500, district: 'oldtown', time: 150,
+    brief: 'Marlowe: "Pick up the sedan by the old arcade and bring it to the garage. Easy money, kid."',
+    stages: [ { kind: 'goto', label: 'Reach the marked car', x: 500, y: 500 },
+              { kind: 'goto', label: 'Deliver it to the garage', x: 900, y: 900, garage: true } ] },
+  { id: 'm2', title: 'Beachfront Run', reward: 750, district: 'beachfront', time: 170,
+    brief: 'Marlowe: "A package waits at the pier. Grab it, then lose anyone who follows."',
+    stages: [ { kind: 'goto', label: 'Collect the package at the pier', x: 1600, y: 2050 },
+              { kind: 'goto', label: 'Drop it at the beach motel', x: 700, y: 2100 } ] },
+  { id: 'm3', title: 'Downtown Debt', reward: 1000, district: 'downtown', time: 180,
+    brief: 'Marlowe: "A shopkeeper downtown owes me. Remind him, then come back clean."',
+    stages: [ { kind: 'goto', label: 'Visit the downtown shop', x: 1900, y: 600 },
+              { kind: 'goto', label: 'Return to the garage', x: 900, y: 900, garage: true } ] },
+  { id: 'm4', title: 'Marina Manifest', reward: 1250, district: 'marina', time: 190,
+    brief: 'Marlowe: "The marina office has a manifest with my name on it. It should not."',
+    stages: [ { kind: 'goto', label: 'Reach the marina office', x: 2750, y: 1400 },
+              { kind: 'goto', label: 'Bring the manifest to the pier', x: 1600, y: 2050 } ] },
+  { id: 'm5', title: 'Night Courier', reward: 1500, district: 'downtown', time: 160,
+    brief: 'Marlowe: "Three drops, no questions. The city is watching, so drive like it."',
+    stages: [ { kind: 'goto', label: 'Drop one — tower plaza', x: 2100, y: 400 },
+              { kind: 'goto', label: 'Drop two — old town square', x: 400, y: 800 },
+              { kind: 'goto', label: 'Drop three — beach motel', x: 700, y: 2100 } ] },
+  { id: 'm6', title: 'Harbour Heat', reward: 2000, district: 'marina', time: 200,
+    brief: 'Marlowe: "Customs is sniffing around the docks. Move the crates before they do."',
+    stages: [ { kind: 'goto', label: 'Load up at the docks', x: 2900, y: 1800 },
+              { kind: 'goto', label: 'Stash them at the garage', x: 900, y: 900, garage: true } ] },
+  { id: 'm7', title: 'Old Town Ledger', reward: 2500, district: 'oldtown', time: 210,
+    brief: 'Marlowe: "The ledger in the old town hall lists every favour owed. Burn the list."',
+    stages: [ { kind: 'goto', label: 'Infiltrate the old town hall', x: 600, y: 400 },
+              { kind: 'goto', label: 'Escape to the beachfront', x: 1500, y: 2150 } ] },
+  { id: 'm8', title: 'Neon Getaway', reward: 3000, district: 'downtown', time: 180,
+    brief: 'Marlowe: "Tonight the dispatch goes maximum. Outrun it and the city is yours."',
+    stages: [ { kind: 'goto', label: 'Hit the downtown vault', x: 2300, y: 700 },
+              { kind: 'goto', label: 'Lose the heat at the garage', x: 900, y: 900, garage: true } ] },
+  { id: 'm9', title: 'The Long Shore', reward: 4000, district: 'beachfront', time: 240,
+    brief: 'Marlowe: "One last run along the shore. Every district, one night, no mistakes."',
+    stages: [ { kind: 'goto', label: 'Start at the old arcade', x: 500, y: 500 },
+              { kind: 'goto', label: 'Cross downtown', x: 2000, y: 900 },
+              { kind: 'goto', label: 'Finish at the marina', x: 2750, y: 1400 } ] },
+  { id: 'm10', title: 'King of Neon Bay', reward: 5000, district: 'marina', time: 260,
+    brief: 'Marlowe: "Take the harbour crown, kid. After tonight, Neon Bay answers to you."',
+    stages: [ { kind: 'goto', label: 'Seize the harbour office', x: 2900, y: 1200 },
+              { kind: 'goto', label: 'Claim the garage throne', x: 900, y: 900, garage: true } ] },
 ];
 
-export function jobAt(index) {
-  return index >= 0 && index < JOBS.length ? JOBS[index] : null;
-}
-
-export function totalRewards() {
-  return JOBS.reduce((sum, job) => sum + job.reward, 0);
-}
+export const GARAGE = { x: 900, y: 900, r: 46 };
+export const SPAWN = { x: 600, y: 600 }; // street intersection: never inside a building
