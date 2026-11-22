@@ -1,11 +1,9 @@
-// Neon Bay Nights — make.fun gta6-01 entry program (Node 22, standard library only).
-// The game itself is the static files under game/ (game/index.html plus its ES
-// modules, fully offline). This program hands it in: it copies game/ and
-// screenshots/ from beside this file to /output and writes /output/dossier.json
-// with the vendored make.fun library, exactly as the kit starter does.
-// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
-//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
-
+// Neon Bay Nights — make.fun gta6-01 entry hand-in program (v8, true 3D).
+// The game is the game/ folder beside this file: a Three.js open-world
+// crime game that plays offline from static files. This program copies
+// game/ and screenshots/ to /output and writes dossier.json with the
+// vendored make.fun library. Node 22, standard library only.
+// Local run: node serve.ts  ·  Hand-in: MAKEFUN_OUTPUT_DIR=out node main.ts
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,9 +19,6 @@ if (existsSync(join(here, 'screenshots'))) {
   cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
 }
 
-// The scorer's own caps shape the dossier text and refuse oversize entries.
-// The entry must run twice and write identical bytes, so this program is a pure
-// copy plus the deterministic buildDossier call — no timestamps, no randomness.
 writeFileSync(
   join(out, 'dossier.json'),
   buildDossier(out, {
