@@ -1,223 +1,231 @@
-// hud.js — dense DOM HUD: mission card, dispatch panel, weapon slots,
-// circular minimap, speedometer, money, clock, stars, bars, dialogue.
-// Built once as DOM, updated each frame from game state.
-import { WORLD_SIZE } from './world.js';
+// hud.js — DOM HUD and canvas minimap for Neon Bay Nights.
+import { WORLD, LANDMARKS, districtAt } from './world.js';
+import { missionInfo, currentStage } from './missions.js';
+import { dispatchInfo } from './police.js';
+import { RADIO_NAMES } from './audio.js';
 
-export function buildHud() {
+export const WEAPON_SLOTS = [
+  { key: 'fists', label: 'Fists' },
+  { key: 'pistol', label: 'Pistol' },
+  { key: 'smg', label: 'SMG' },
+  { key: 'shotgun', label: 'Shotgun' },
+];
+
+export function buildHud(G) {
   const root = document.getElementById('hud');
   root.innerHTML = `
-    <div id="topbar">
-      <div id="money">$0</div>
-      <div id="clock">17:40</div>
-      <div id="stars"></div>
-    </div>
-    <div id="mission-card">
+    <div id="mission-card" class="panel">
       <div id="mission-job">JOB 1/10</div>
       <div id="mission-title">First Wheels</div>
       <div id="mission-stage">STAGE 1/2</div>
-      <div id="mission-objective"></div>
-      <div id="mission-next"></div>
+      <div id="mission-objective">—</div>
+      <div id="mission-next">—</div>
       <div id="mission-timer"></div>
     </div>
-    <div id="dispatch-panel">
-      <div id="dispatch-tier">DISPATCH: CLEAR</div>
+    <div id="dispatch-panel" class="panel" style="display:none">
+      <div id="dispatch-tier">TIER 1 · PATROL</div>
       <div id="dispatch-units"></div>
     </div>
-    <div id="district-panel">
-      <div id="district-name">Beachfront</div>
-      <div id="district-respect"></div>
-      <div id="radio-line">RADIO: Neon FM</div>
+    <div id="district-panel" class="panel">
+      <div id="district-name">Downtown</div>
+      <div id="district-respect">Respect 0</div>
+      <div id="radio-line">Neon FM</div>
     </div>
-    <canvas id="minimap" width="170" height="170"></canvas>
-    <div id="speedo">
-      <div id="speed-value">0</div>
-      <div id="speed-unit">km/h</div>
-      <div id="vehicle-name">On foot</div>
-      <div id="vehicle-cond">CONDITION 100%</div>
+    <div id="topbar">
+      <div id="money">$250</div>
+      <div id="clock">17:42</div>
+      <div id="stars"></div>
     </div>
+    <div id="weapons"></div>
     <div id="bars">
       <div class="bar-row"><span>HP</span><div class="bar"><div id="hp-fill"></div></div></div>
       <div class="bar-row"><span>ARMOR</span><div class="bar"><div id="armor-fill"></div></div></div>
     </div>
-    <div id="weapons"></div>
-    <div id="dialogue"><div id="dialogue-portrait">M</div><div><div id="dialogue-name">MARLOWE</div><div id="dialogue-text"></div></div></div>
+    <canvas id="minimap" width="180" height="180"></canvas>
+    <div id="speedo" class="panel">
+      <div><span id="speed-value">0</span><span id="speed-unit">km/h</span></div>
+      <div id="vehicle-name">On foot</div>
+      <div id="vehicle-cond"></div>
+    </div>
+    <div id="dialogue">
+      <div id="dialogue-portrait">M</div>
+      <div><div id="dialogue-name">MARLOWE</div><div id="dialogue-text"></div></div>
+    </div>
     <div id="banner"></div>
+    <div id="tier-banner"></div>
     <div id="hint"></div>
+    <div id="crosshair">+</div>
+    <div id="controls-bar">WASD move/drive · E steal/exit car · Mouse aim · Click/F attack · 1-4 weapons · R radio · H horn · Space handbrake/sprint · P pause · M mute</div>
     <div id="title-screen">
       <h1>NEON BAY NIGHTS</h1>
-      <p class="tag">A true-3D open-world crime game in the coastal city of Neon Bay.</p>
-      <p class="controls">WASD move / drive &nbsp;·&nbsp; E enter car &nbsp;·&nbsp; Mouse aim &nbsp;·&nbsp; Click / F attack<br>
-      1–4 weapons &nbsp;·&nbsp; R radio &nbsp;·&nbsp; H horn &nbsp;·&nbsp; P pause &nbsp;·&nbsp; M mute &nbsp;·&nbsp; Space handbrake</p>
-      <button id="start-btn">START — 10 JOBS FOR MARLOWE</button>
-      <p class="small">Free roam, traffic, pedestrians, police dispatch with helicopter air support, saves on this device.</p>
+      <div class="tag">A true-3D open-world crime game. Run Marlowe's jobs, steal cars, outrun Bay PD.</div>
+      <button id="start-btn">START</button>
+      <div class="controls">WASD move / drive &nbsp;·&nbsp; E enter / exit car &nbsp;·&nbsp; Mouse aim, Click or F attack<br>
+      1-4 weapons &nbsp;·&nbsp; R radio &nbsp;·&nbsp; H horn &nbsp;·&nbsp; Space handbrake / sprint &nbsp;·&nbsp; P pause &nbsp;·&nbsp; M mute</div>
+      <div class="small">10 story jobs · 4 districts · 5 dispatch tiers · helicopter air support · saves in your browser</div>
     </div>
-    <div id="pause-screen"><h2>PAUSED</h2><p>Press P to resume. Progress saves automatically.</p></div>
-    <div id="wasted-screen"><h2>WASTED</h2><p>You wake at the hospital. Marlowe still has work.</p></div>
+    <div id="pause-screen"><h2>PAUSED</h2><div>Press P to resume</div></div>
+    <div id="wasted-screen"><h2>WASTED</h2><div>Back to Neon Bay Hospital…</div></div>
   `;
   const el = (id) => document.getElementById(id);
-  return {
-    money: el('money'),
-    clock: el('clock'),
-    stars: el('stars'),
-    missionJob: el('mission-job'),
-    missionTitle: el('mission-title'),
-    missionStage: el('mission-stage'),
-    missionObjective: el('mission-objective'),
-    missionNext: el('mission-next'),
-    missionTimer: el('mission-timer'),
-    dispatchTier: el('dispatch-tier'),
-    dispatchUnits: el('dispatch-units'),
-    districtName: el('district-name'),
-    districtRespect: el('district-respect'),
-    radioLine: el('radio-line'),
-    minimap: el('minimap'),
-    speedValue: el('speed-value'),
-    vehicleName: el('vehicle-name'),
-    vehicleCond: el('vehicle-cond'),
-    hpFill: el('hp-fill'),
-    armorFill: el('armor-fill'),
-    weapons: el('weapons'),
-    dialogue: el('dialogue'),
-    dialogueText: el('dialogue-text'),
-    banner: el('banner'),
-    hint: el('hint'),
-    titleScreen: el('title-screen'),
-    pauseScreen: el('pause-screen'),
-    wastedScreen: el('wasted-screen'),
-    startBtn: el('start-btn'),
+  const hud = {
+    money: el('money'), clock: el('clock'), stars: el('stars'),
+    job: el('mission-job'), title: el('mission-title'), stage: el('mission-stage'),
+    objective: el('mission-objective'), next: el('mission-next'), timer: el('mission-timer'),
+    dispatch: el('dispatch-panel'), dispatchTier: el('dispatch-tier'), dispatchUnits: el('dispatch-units'),
+    district: el('district-name'), respect: el('district-respect'), radio: el('radio-line'),
+    weapons: el('weapons'), hp: el('hp-fill'), armor: el('armor-fill'),
+    minimap: el('minimap'), speed: el('speed-value'), vehicleName: el('vehicle-name'),
+    vehicleCond: el('vehicle-cond'), dialogue: el('dialogue'), dialogueName: el('dialogue-name'),
+    dialogueText: el('dialogue-text'), banner: el('banner'), tierBanner: el('tier-banner'),
+    hint: el('hint'), crosshair: el('crosshair'),
+    titleScreen: el('title-screen'), pauseScreen: el('pause-screen'), wastedScreen: el('wasted-screen'),
+    dialogueUntil: 0, bannerUntil: 0, tierUntil: 0,
   };
+  hud.showDialogue = function (name, text, secs) {
+    hud.dialogueName.textContent = name;
+    hud.dialogueText.textContent = text;
+    hud.dialogue.style.display = 'flex';
+    hud.dialogueUntil = G.time + (secs || 5);
+  };
+  hud.showBanner = function (text, secs) {
+    hud.banner.textContent = text;
+    hud.banner.style.display = 'block';
+    hud.bannerUntil = G.time + (secs || 3);
+  };
+  hud.showTier = function (text) {
+    hud.tierBanner.textContent = text;
+    hud.tierBanner.style.display = 'block';
+    hud.tierUntil = G.time + 3.2;
+  };
+  hud.setHint = function (text) { hud.hint.textContent = text || ''; };
+  G.hud = hud;
+  return hud;
 }
 
-const WEAPON_NAMES = ['FISTS', 'PISTOL', 'SMG', 'SHOTGUN'];
+export function updateHud(G) {
+  const hud = G.hud;
+  if (!hud) return;
+  const p = G.player;
+  hud.money.textContent = '$' + Math.floor(G.save.money).toLocaleString('en-US');
+  const mins = Math.floor(G.clockMinutes) % (24 * 60);
+  hud.clock.textContent = String(Math.floor(mins / 60)).padStart(2, '0') + ':' + String(mins % 60).padStart(2, '0');
+  hud.stars.textContent = '★'.repeat(G.police.stars) + '☆'.repeat(5 - G.police.stars);
 
-export function updateHud(hud, s) {
-  hud.money.textContent = `$${Math.round(s.money).toLocaleString('en-US')}`;
-  const hh = Math.floor(s.clockMinutes / 60) % 24;
-  const mm = Math.floor(s.clockMinutes % 60);
-  hud.clock.textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-  hud.stars.textContent = '★'.repeat(s.wanted) + '☆'.repeat(5 - s.wanted);
-  hud.stars.style.color = s.wanted > 0 ? '#ffd94d' : 'rgba(255,255,255,0.35)';
+  const mi = missionInfo(G);
+  hud.job.textContent = mi.jobLabel;
+  hud.title.textContent = mi.title;
+  hud.stage.textContent = mi.stageLabel;
+  hud.objective.textContent = mi.objective;
+  hud.next.textContent = mi.next;
+  hud.timer.textContent = mi.timer ? '⏱ ' + mi.timer : '';
+  hud.timer.style.color = mi.timer && G.mission.timerLeft < 15 ? '#ff6b6b' : '#ffd94d';
 
-  if (s.job) {
-    hud.missionJob.textContent = `JOB ${s.jobIndex + 1}/10 · $${s.job.reward}`;
-    hud.missionTitle.textContent = s.job.title;
-    hud.missionStage.textContent = `STAGE ${Math.min(s.stageIndex + 1, s.job.stages.length)}/${s.job.stages.length} · ${s.job.district}`;
-    hud.missionObjective.textContent = s.stage ? s.stage.text : 'Job complete';
-    const next = s.job.stages[s.stageIndex + 1];
-    hud.missionNext.textContent = next ? `NEXT: ${next.text}` : 'NEXT: Collect reward';
-    const t = Math.max(0, Math.ceil(s.missionTimer));
-    hud.missionTimer.textContent = `⏱ ${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
-    hud.missionTimer.style.color = t < 20 ? '#ff6b6b' : '#ffd94d';
+  const di = dispatchInfo(G);
+  if (G.police.stars > 0) {
+    hud.dispatch.style.display = 'block';
+    hud.dispatchTier.textContent = di.tier;
+    hud.dispatchUnits.innerHTML = di.lines
+      .map((l) => '<div>' + l.callsign + ' — ' + l.dist + 'm — ' + l.tactic + '</div>')
+      .join('');
   } else {
-    hud.missionJob.textContent = 'FREE ROAM';
-    hud.missionTitle.textContent = 'Neon Bay is yours';
-    hud.missionStage.textContent = 'All 10 jobs complete';
-    hud.missionObjective.textContent = 'Drive, explore, cause trouble — or rest at the garage.';
-    hud.missionNext.textContent = '';
-    hud.missionTimer.textContent = '';
+    hud.dispatch.style.display = 'none';
   }
 
-  if (s.tier) {
-    hud.dispatchTier.textContent = `DISPATCH TIER ${s.tier.stars}: ${s.tier.name.toUpperCase()} · ${s.policeUnits.length} UNITS`;
-    hud.dispatchTier.style.color = '#ff8a8a';
-    hud.dispatchUnits.innerHTML = s.policeUnits
-      .map((u) => `<div>${u.unitName} · ${u.distance ?? '—'}m · ${u.tactic}</div>`)
-      .join('') + (s.heli ? '<div>AIR-1 · OVERHEAD · SPOTLIGHT</div>' : '') + (s.roadblocks ? '<div>ROADBLOCK · AHEAD</div>' : '');
-  } else {
-    hud.dispatchTier.textContent = 'DISPATCH: CLEAR';
-    hud.dispatchTier.style.color = '#8be89b';
-    hud.dispatchUnits.innerHTML = '<div>No units responding</div>';
-  }
+  const district = districtAt(p.pos.x, p.pos.z);
+  hud.district.textContent = district;
+  hud.respect.textContent = 'Respect ' + (G.save.respect[district] || 0) +
+    '  ·  Downtown ' + (G.save.respect.Downtown || 0) +
+    ' · Beachfront ' + (G.save.respect.Beachfront || 0) +
+    ' · Old Town ' + (G.save.respect['Old Town'] || 0) +
+    ' · Marina ' + (G.save.respect.Marina || 0);
+  hud.radio.textContent = '♪ ' + RADIO_NAMES[G.save.radio];
 
-  hud.districtName.textContent = s.district;
-  hud.districtRespect.textContent = Object.entries(s.respect)
-    .map(([k, v]) => `${k} ${v}`)
-    .join(' · ');
-  hud.radioLine.textContent = `RADIO: ${s.radio} (R)`;
-
-  hud.speedValue.textContent = String(Math.round(s.speedKmh));
-  hud.vehicleName.textContent = s.vehicleName;
-  hud.vehicleCond.textContent = `CONDITION ${Math.round(s.vehicleCondition)}%`;
-  hud.hpFill.style.width = `${Math.max(0, Math.min(100, s.health))}%`;
-  hud.armorFill.style.width = `${Math.max(0, Math.min(100, s.armor))}%`;
-
-  hud.weapons.innerHTML = WEAPON_NAMES.map((name, i) => {
-    const slot = i + 1;
-    const active = s.weaponSlot === slot;
-    const ammo = slot === 1 ? '∞' : s.ammo[slot] ?? 0;
-    const owned = slot === 1 || s.owned[slot];
-    return `<div class="wslot${active ? ' active' : ''}${owned ? '' : ' locked'}"><b>${slot}</b> ${name}<span>${owned ? ammo : 'LOCKED'}</span></div>`;
+  hud.weapons.innerHTML = WEAPON_SLOTS.map((slot, i) => {
+    const w = G.save.weapons[slot.key];
+    const active = p.weapon === slot.key ? ' active' : '';
+    const locked = !w.owned ? ' locked' : '';
+    const ammo = !w.owned ? 'LOCKED' : slot.key === 'fists' ? '—' : String(Math.floor(w.ammo));
+    return '<div class="wslot' + active + locked + '"><span>' + (i + 1) + ' ' + slot.label + '</span><span>' + ammo + '</span></div>';
   }).join('');
 
-  if (s.dialogue && s.dialogueTimer > 0) {
-    hud.dialogue.style.display = 'flex';
-    hud.dialogueText.textContent = s.dialogue.replace(/^Marlowe: "?/, '').replace(/"$/, '');
-  } else {
-    hud.dialogue.style.display = 'none';
-  }
-  hud.banner.textContent = s.banner || '';
-  hud.banner.style.display = s.banner ? 'block' : 'none';
-  hud.hint.textContent = s.hint || '';
+  hud.hp.style.width = Math.max(0, p.hp) + '%';
+  hud.armor.style.width = Math.max(0, p.armor) + '%';
 
-  drawMinimap(hud.minimap, s);
+  if (p.car) {
+    hud.speed.textContent = String(Math.round(Math.abs(p.car.speed) * 3.6));
+    hud.vehicleName.textContent = p.car.spec.name;
+    hud.vehicleCond.textContent = 'Condition ' + Math.round(p.car.condition) + '%';
+  } else {
+    hud.speed.textContent = String(Math.round(Math.abs(p.speed || 0) * 3.6));
+    hud.vehicleName.textContent = 'On foot';
+    hud.vehicleCond.textContent = '';
+  }
+  hud.crosshair.style.display = !p.car && p.weapon !== 'fists' ? 'block' : 'none';
+
+  if (hud.dialogue.style.display !== 'none' && G.time > hud.dialogueUntil) hud.dialogue.style.display = 'none';
+  if (hud.banner.style.display !== 'none' && G.time > hud.bannerUntil) hud.banner.style.display = 'none';
+  if (hud.tierBanner.style.display !== 'none' && G.time > hud.tierUntil) hud.tierBanner.style.display = 'none';
+
+  drawMinimap(G);
 }
 
-function drawMinimap(canvas, s) {
-  const g = canvas.getContext('2d');
-  const size = canvas.width;
-  const half = size / 2;
-  const range = 150; // metres shown
-  g.clearRect(0, 0, size, size);
-  g.save();
-  g.beginPath();
-  g.arc(half, half, half - 2, 0, Math.PI * 2);
-  g.clip();
-  g.fillStyle = '#1d2b3a';
-  g.fillRect(0, 0, size, size);
-  // ocean at the south (bottom of minimap = +z)
-  g.fillStyle = '#2e8fb8';
-  const oceanY = half + ((WORLD_SIZE / 2 - s.playerPos.z) / range) * half;
-  g.fillRect(0, oceanY, size, size - oceanY);
-  g.fillStyle = '#e8d29a';
-  g.fillRect(0, oceanY - 8, size, 8);
-  // roads
-  g.strokeStyle = 'rgba(255,255,255,0.4)';
-  g.lineWidth = 3;
-  for (let r = -192; r <= 192; r += 48) {
-    const x = half + ((r - s.playerPos.x) / range) * half;
-    const y = half + ((r - s.playerPos.z) / range) * half;
-    g.beginPath(); g.moveTo(x, 0); g.lineTo(x, size); g.stroke();
-    g.beginPath(); g.moveTo(0, y); g.lineTo(size, y); g.stroke();
+function drawMinimap(G) {
+  const canvas = G.hud.minimap;
+  const ctx = canvas.getContext('2d');
+  const S = canvas.width;
+  const range = 150; // metres shown across the map
+  const p = G.player.pos;
+  const toMap = (x, z) => [S / 2 + ((x - p.x) / range) * S, S / 2 + ((z - p.z) / range) * S];
+  ctx.clearRect(0, 0, S, S);
+  ctx.save();
+  ctx.beginPath(); ctx.arc(S / 2, S / 2, S / 2 - 2, 0, Math.PI * 2); ctx.clip();
+  ctx.fillStyle = '#6f9e58'; ctx.fillRect(0, 0, S, S);
+  // Water on the east.
+  const [waterX] = toMap(WORLD.waterX, 0);
+  ctx.fillStyle = '#2e7fc4'; ctx.fillRect(waterX, 0, S, S);
+  ctx.fillStyle = '#ecd29a';
+  const [beachX] = toMap(WORLD.beachX, 0);
+  ctx.fillRect(beachX, 0, Math.max(0, waterX - beachX), S);
+  // Roads.
+  ctx.strokeStyle = '#3c4148'; ctx.lineWidth = 5;
+  for (const ax of WORLD.avenues) {
+    const [mx] = toMap(ax, 0);
+    ctx.beginPath(); ctx.moveTo(mx, 0); ctx.lineTo(mx, S); ctx.stroke();
   }
-  const blip = (wx, wz, color, r = 4) => {
-    const x = half + ((wx - s.playerPos.x) / range) * half;
-    const y = half + ((wz - s.playerPos.z) / range) * half;
-    if (x < 4 || x > size - 4 || y < 4 || y > size - 4) return;
-    g.fillStyle = color;
-    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
-  };
-  for (const p of s.policePositions) blip(p.x, p.z, '#ff4444', 4);
-  if (s.heliPos) blip(s.heliPos.x, s.heliPos.z, '#ff9d2e', 5);
-  if (s.targetPos) blip(s.targetPos.x, s.targetPos.z, '#ffd94d', 6);
-  blip(90, 78, '#ffb020', 5); // garage
-  // player arrow
-  g.translate(half, half);
-  g.rotate(-s.heading + Math.PI);
-  g.fillStyle = '#ffffff';
-  g.beginPath();
-  g.moveTo(0, -8);
-  g.lineTo(5, 6);
-  g.lineTo(-5, 6);
-  g.closePath();
-  g.fill();
-  g.restore();
-  g.strokeStyle = 'rgba(255,255,255,0.7)';
-  g.lineWidth = 2;
-  g.beginPath();
-  g.arc(half, half, half - 2, 0, Math.PI * 2);
-  g.stroke();
-  g.fillStyle = '#fff';
-  g.font = 'bold 11px Arial';
-  g.textAlign = 'center';
-  g.fillText('N', half, 14);
+  for (const sz of WORLD.streets) {
+    const [, mz] = toMap(0, sz);
+    ctx.beginPath(); ctx.moveTo(0, mz); ctx.lineTo(S, mz); ctx.stroke();
+  }
+  function dot(x, z, color, r) {
+    const [mx, mz] = toMap(x, z);
+    if (mx < -6 || mx > S + 6 || mz < -6 || mz > S + 6) return;
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(mx, mz, r, 0, Math.PI * 2); ctx.fill();
+  }
+  dot(LANDMARKS.hospital.x, LANDMARKS.hospital.z, '#ffffff', 4);
+  if (G.garagePoint) dot(G.garagePoint.x, G.garagePoint.z, '#4de8ff', 4);
+  for (const car of G.cars) {
+    if (car.kind === 'police') dot(car.pos.x, car.pos.z, '#ff4f4f', 3.4);
+  }
+  if (G.police.heli) dot(G.police.heli.pos.x, G.police.heli.pos.z, '#ff9a3d', 4);
+  const stage = currentStage(G);
+  if (stage) {
+    const [mx, mz] = toMap(stage.x, stage.z);
+    const cx = Math.max(8, Math.min(S - 8, mx)), cz = Math.max(8, Math.min(S - 8, mz));
+    ctx.fillStyle = '#ffd94d';
+    ctx.beginPath(); ctx.arc(cx, cz, 5 + Math.sin(G.time * 4) * 1.2, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#14202e'; ctx.lineWidth = 1.5; ctx.stroke();
+  }
+  // Player arrow.
+  const heading = G.player.car ? G.player.car.heading : G.player.heading;
+  ctx.save();
+  ctx.translate(S / 2, S / 2);
+  ctx.rotate(Math.atan2(Math.sin(heading), -Math.cos(heading)) + Math.PI);
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(0, -7); ctx.lineTo(4.5, 5); ctx.lineTo(-4.5, 5); ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+  ctx.restore();
 }

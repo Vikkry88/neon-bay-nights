@@ -1,275 +1,257 @@
-// missions.js — 10 story jobs for fixer Marlowe, with markers, timers,
-// rewards, dialogue lines and district respect. Jobs run in sequence.
+// missions.js — Marlowe's 10 story jobs: stages, timers, rewards, markers.
 import * as THREE from 'three';
+import { districtAt } from './world.js';
+import { spawnCarAt } from './vehicles.js';
+import { addHeat } from './police.js';
 
 export const JOBS = [
   {
-    title: 'First Wheels',
-    district: 'Beachfront',
-    reward: 500,
-    time: 180,
-    brief: 'Marlowe: "New face in Neon Bay? Prove it. Grab any car and bring it to the yellow ring by the beach."',
+    title: 'First Wheels', reward: 500, timer: 0,
+    brief: 'Marlowe: "New face, easy money. A Sol Convertible sits by the Marina. Bring it to Bay Garage, no scratches."',
     stages: [
-      { text: 'Steal any car (press E beside one)', type: 'enterCar' },
-      { text: 'Drive to the yellow ring on the boulevard', type: 'goto', x: -40, z: 196 },
+      { kind: 'steal', x: 150, z: 138, carSpec: 7, text: 'Steal the Sol Convertible at the Marina', next: 'Deliver it to Bay Garage' },
+      { kind: 'deliver', x: 40, z: 104, text: 'Deliver the car to Bay Garage', next: 'Job complete' },
     ],
-    done: 'Marlowe: "Clean. The car is yours. More work when you are ready."',
   },
   {
-    title: 'Package Run',
-    district: 'Downtown',
-    reward: 800,
-    time: 150,
-    brief: 'Marlowe: "A package waits downtown. Pick it up and lose any heat before the drop."',
+    title: 'Package Run', reward: 650, timer: 120,
+    brief: 'Marlowe: "Pick up a package in Old Town, drop it Downtown. Clock is ticking, do not open it."',
     stages: [
-      { text: 'Pick up the package downtown', type: 'goto', x: -120, z: -120 },
-      { text: 'Deliver to the marina drop', type: 'goto', x: 150, z: 140 },
+      { kind: 'go', x: -160, z: -80, text: 'Pick up the package in Old Town', next: 'Deliver it Downtown' },
+      { kind: 'go', x: 0, z: 80, text: 'Deliver the package Downtown', next: 'Job complete' },
     ],
-    done: 'Marlowe: "Delivered. Downtown notices people who deliver."',
   },
   {
-    title: 'Hot Ride',
-    district: 'Old Town',
-    reward: 1200,
-    time: 160,
-    brief: 'Marlowe: "A collector wants a Palm GT from Old Town. Borrow it. Politely. Fast."',
+    title: 'Hot Ride', reward: 800, timer: 110, heatOnSteal: 1.2,
+    brief: 'Marlowe: "A Palm GT downtown has my name on it. The owner may call Bay PD. Drive like you mean it."',
     stages: [
-      { text: 'Find and steal a Palm GT', type: 'stealModel', model: 'Palm GT' },
-      { text: 'Deliver it to Bay Garage', type: 'goto', x: 90, z: 78 },
+      { kind: 'steal', x: 0, z: -150, carSpec: 2, text: 'Steal the Palm GT Downtown', next: 'Deliver it to the Beachfront' },
+      { kind: 'deliver', x: 160, z: -80, text: 'Deliver the Palm GT to the Beachfront', next: 'Job complete' },
     ],
-    done: 'Marlowe: "The collector sends thanks. And cash."',
   },
   {
-    title: 'Heat Check',
-    district: 'Downtown',
-    reward: 1500,
-    time: 200,
-    brief: 'Marlowe: "Make some noise downtown, then shake the patrol and reach the garage."',
+    title: 'Heat Check', reward: 900, timer: 0,
+    brief: 'Marlowe: "Make some noise on the Beachfront, then lose Bay PD at the garage and come see me."',
     stages: [
-      { text: 'Reach 2 wanted stars downtown', type: 'wanted', stars: 2 },
-      { text: 'Lose the police (reach 0 stars)', type: 'loseHeat' },
-      { text: 'Return to Bay Garage', type: 'goto', x: 90, z: 78 },
+      { kind: 'go', x: 160, z: 80, text: 'Head to the Beachfront boulevard', next: 'Lose the heat at Bay Garage', heat: 2.2 },
+      { kind: 'escape', x: 40, z: 104, text: 'Lose Bay PD — reach Bay Garage', next: 'Meet Marlowe Downtown' },
+      { kind: 'go', x: 80, z: 0, text: 'Meet Marlowe Downtown', next: 'Job complete' },
     ],
-    done: 'Marlowe: "You run cool under pressure. Good."',
   },
   {
-    title: 'Marina Money',
-    district: 'Marina',
-    reward: 1800,
-    time: 170,
-    brief: 'Marlowe: "A marina courier is late with my money. Meet them at the pier and bring it back."',
+    title: 'Marina Money', reward: 1200, timer: 150,
+    brief: 'Marlowe: "Cash pickup at the pier, then the Marina, then home to the garage. Two stops, one timer."',
     stages: [
-      { text: 'Meet the courier at the pier', type: 'goto', x: -60, z: 240 },
-      { text: 'Bring the money to Bay Garage', type: 'goto', x: 90, z: 78 },
+      { kind: 'go', x: 205, z: 0, text: 'Pick up the cash at the pier', next: 'Second pickup at the Marina' },
+      { kind: 'go', x: 160, z: 160, text: 'Second pickup at the Marina', next: 'Deliver to Bay Garage' },
+      { kind: 'deliver', x: 40, z: 104, text: 'Deliver the cash to Bay Garage', next: 'Job complete' },
     ],
-    done: 'Marlowe: "Counted. Every note. The marina respects that."',
   },
   {
-    title: 'Beachfront Chase',
-    district: 'Beachfront',
-    reward: 2200,
-    time: 190,
-    brief: 'Marlowe: "Race the boulevard end to end before the patrol closes the beach road."',
+    title: 'Beachfront Chase', reward: 1500, timer: 95, heatOnSteal: 2.2,
+    brief: 'Marlowe: "Neon Coupe on the Beachfront, buyer waiting in Old Town. Bay PD will be all over you. Floor it."',
     stages: [
-      { text: 'Hit the west boulevard checkpoint', type: 'goto', x: -200, z: 196 },
-      { text: 'Hit the east boulevard checkpoint', type: 'goto', x: 200, z: 196 },
+      { kind: 'steal', x: 160, z: -150, carSpec: 4, text: 'Steal the Neon Coupe on the Beachfront', next: 'Deliver it to Old Town' },
+      { kind: 'deliver', x: -160, z: 80, text: 'Deliver the Neon Coupe to Old Town', next: 'Job complete' },
     ],
-    done: 'Marlowe: "Fast. The beachfront crowd loves a show."',
   },
   {
-    title: 'Old Town Debt',
-    district: 'Old Town',
-    reward: 2600,
-    time: 180,
-    brief: 'Marlowe: "An old-town shop owes me. Collect the debt and bring it home."',
+    title: 'Old Town Debt', reward: 1800, timer: 180,
+    brief: 'Marlowe: "Three debt stops: Old Town south, Downtown, Old Town north. Collect, do not chat."',
     stages: [
-      { text: 'Collect the debt in Old Town', type: 'goto', x: 140, z: -130 },
-      { text: 'Deliver to Bay Garage', type: 'goto', x: 90, z: 78 },
+      { kind: 'go', x: -160, z: 160, text: 'Collect the debt in south Old Town', next: 'Next stop: Downtown' },
+      { kind: 'go', x: 0, z: 0, text: 'Collect the debt Downtown', next: 'Next stop: north Old Town' },
+      { kind: 'go', x: -160, z: -160, text: 'Collect the debt in north Old Town', next: 'Job complete' },
     ],
-    done: 'Marlowe: "Debt settled. Old Town remembers."',
   },
   {
-    title: 'Air Support',
-    district: 'Downtown',
-    reward: 3200,
-    time: 240,
-    brief: 'Marlowe: "The PD is testing its helicopter. Draw it out, then slip away to the garage."',
+    title: 'Air Support', reward: 2200, timer: 0, heatOnSteal: 3.2,
+    brief: 'Marlowe: "Steal the Bay Cruiser and bring the helicopter with you. Lose them at the garage. Good luck."',
     stages: [
-      { text: 'Reach 3 wanted stars (helicopter responds)', type: 'wanted', stars: 3 },
-      { text: 'Escape to Bay Garage', type: 'goto', x: 90, z: 78 },
+      { kind: 'steal', x: 80, z: 150, carSpec: 1, text: 'Steal the Bay Cruiser', next: 'Escape to Bay Garage' },
+      { kind: 'escape', x: 40, z: 104, text: 'Lose the helicopter — reach Bay Garage', next: 'Job complete' },
     ],
-    done: 'Marlowe: "You outran the eye in the sky. Impressive."',
   },
   {
-    title: 'Grand Tour',
-    district: 'Marina',
-    reward: 4000,
-    time: 260,
-    brief: 'Marlowe: "Four districts, four drops, one night. Show me Neon Bay is yours."',
+    title: 'Grand Tour', reward: 3000, timer: 240,
+    brief: 'Marlowe: "Four districts, four drops, one big payday. Old Town, Beachfront, Marina, Downtown. Go."',
     stages: [
-      { text: 'Drop 1: Downtown', type: 'goto', x: -120, z: -120 },
-      { text: 'Drop 2: Old Town', type: 'goto', x: 140, z: -130 },
-      { text: 'Drop 3: Beachfront', type: 'goto', x: 0, z: 196 },
-      { text: 'Drop 4: Marina', type: 'goto', x: 150, z: 140 },
+      { kind: 'go', x: -160, z: -160, text: 'Drop 1: Old Town', next: 'Drop 2: Beachfront' },
+      { kind: 'go', x: 160, z: -160, text: 'Drop 2: Beachfront', next: 'Drop 3: Marina' },
+      { kind: 'go', x: 160, z: 160, text: 'Drop 3: Marina', next: 'Drop 4: Downtown' },
+      { kind: 'go', x: 0, z: 0, text: 'Drop 4: Downtown', next: 'Job complete' },
     ],
-    done: 'Marlowe: "The whole bay saw you tonight."',
   },
   {
-    title: 'Neon Bay Nights',
-    district: 'Beachfront',
-    reward: 5000,
-    time: 300,
-    brief: 'Marlowe: "Last job. Maximum heat, one clean escape. Finish it and the bay is yours."',
+    title: 'Neon Bay Nights', reward: 5000, timer: 210, heatOnSteal: 4.2,
+    brief: 'Marlowe: "Last job, biggest score. Steal the Sol, run it to the pier, then vanish at the garage. Make me proud."',
     stages: [
-      { text: 'Reach 4 wanted stars', type: 'wanted', stars: 4 },
-      { text: 'Survive and reach Bay Garage', type: 'goto', x: 90, z: 78 },
+      { kind: 'steal', x: 0, z: 150, carSpec: 7, text: 'Steal the Sol Convertible', next: 'Run it to the pier' },
+      { kind: 'deliver', x: 205, z: 0, text: 'Deliver the Sol to the pier', next: 'Escape to Bay Garage' },
+      { kind: 'escape', x: 40, z: 104, text: 'Vanish — reach Bay Garage and lose Bay PD', next: 'Job complete' },
     ],
-    done: 'Marlowe: "Neon Bay Nights. You earned the name."',
   },
 ];
 
-export function makeMarker() {
-  const group = new THREE.Group();
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(3.2, 4.1, 32),
-    new THREE.MeshBasicMaterial({ color: 0xffd94d, transparent: true, opacity: 0.95, side: THREE.DoubleSide }),
-  );
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.15;
-  group.add(ring);
-  const pillar = new THREE.Mesh(
-    new THREE.CylinderGeometry(3.6, 3.6, 22, 20, 1, true),
-    new THREE.MeshBasicMaterial({ color: 0xffd94d, transparent: true, opacity: 0.13, side: THREE.DoubleSide, depthWrite: false }),
-  );
-  pillar.position.y = 11;
-  group.add(pillar);
-  const beacon = new THREE.PointLight(0xffd94d, 60, 30);
-  beacon.position.y = 3;
-  group.add(beacon);
-  return group;
+const STAGE_LINES = [
+  'Marlowe: "Good. Keep moving."',
+  'Marlowe: "That is the spot. Next one, quick."',
+  'Marlowe: "Smooth. Do not get sloppy now."',
+  'Marlowe: "Almost there. Bring it home."',
+];
+
+export function initMissions(G) {
+  G.mission = {
+    jobIndex: Math.min(G.save.jobIndex || 0, JOBS.length),
+    stage: 0, timerLeft: 0, markedCar: null, visitedGarage: false,
+    allDone: (G.save.jobIndex || 0) >= JOBS.length, lineIdx: 0,
+  };
+  // Objective marker: glowing cylinder + ground ring.
+  const marker = new THREE.Group();
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 9, 18, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xffd94d, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
+  beam.position.y = 4.5;
+  const ring = new THREE.Mesh(new THREE.RingGeometry(2.6, 3.4, 24),
+    new THREE.MeshBasicMaterial({ color: 0xffd94d, transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
+  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.1;
+  marker.add(beam); marker.add(ring);
+  G.scene.add(marker);
+  G.mission.marker = marker;
+  // Floating direction arrow above the player.
+  const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.6, 4),
+    new THREE.MeshBasicMaterial({ color: 0xffd94d }));
+  arrow.rotation.x = Math.PI / 2;
+  G.scene.add(arrow);
+  G.mission.arrow = arrow;
+  startJob(G, G.mission.jobIndex, true);
+  return G.mission;
 }
 
-export function makeDirectionArrow() {
-  const cone = new THREE.Mesh(
-    new THREE.ConeGeometry(0.55, 1.7, 10),
-    new THREE.MeshBasicMaterial({ color: 0xffd94d }),
-  );
-  cone.rotation.x = Math.PI / 2;
-  return cone;
+export function currentJob(G) {
+  return G.mission.allDone ? null : JOBS[G.mission.jobIndex];
 }
 
-export class MissionRunner {
-  constructor(scene) {
-    this.scene = scene;
-    this.marker = makeMarker();
-    this.arrow = makeDirectionArrow();
-    scene.add(this.marker);
-    scene.add(this.arrow);
-    this.jobIndex = 0;
-    this.stageIndex = 0;
-    this.timer = 0;
-    this.active = false;
-    this.dialogue = '';
-    this.dialogueTimer = 0;
-  }
+export function currentStage(G) {
+  const job = currentJob(G);
+  return job ? job.stages[G.mission.stage] : null;
+}
 
-  job() {
-    return JOBS[this.jobIndex] || null;
-  }
+export function startJob(G, index, silent) {
+  const M = G.mission;
+  M.jobIndex = index;
+  M.stage = 0;
+  M.visitedGarage = false;
+  M.allDone = index >= JOBS.length;
+  if (M.allDone) { M.marker.visible = false; M.arrow.visible = false; return; }
+  const job = JOBS[index];
+  M.timerLeft = job.timer || 0;
+  setupStage(G);
+  if (!silent && G.hud) G.hud.showDialogue('MARLOWE', job.brief, 7);
+}
 
-  stage() {
-    const j = this.job();
-    return j ? j.stages[this.stageIndex] || null : null;
+function setupStage(G) {
+  const M = G.mission;
+  const stage = currentStage(G);
+  if (!stage) return;
+  if (stage.kind === 'steal') {
+    M.markedCar = spawnCarAt(G, stage.carSpec || 0, stage.x, stage.z, Math.PI / 2, 'parked');
+  } else {
+    M.markedCar = null;
   }
+  if (stage.heat) addHeat(G, stage.heat);
+  M.marker.position.set(stage.x, 0, stage.z);
+  M.marker.visible = true;
+}
 
-  start(jobIndex) {
-    this.jobIndex = Math.min(jobIndex, JOBS.length - 1);
-    this.stageIndex = 0;
-    const j = this.job();
-    this.timer = j ? j.time : 0;
-    this.active = !!j;
-    this.dialogue = j ? j.brief : '';
-    this.dialogueTimer = 9;
-    this.placeMarker();
-  }
-
-  placeMarker() {
-    const s = this.stage();
-    if (s && s.type === 'goto') {
-      this.marker.visible = true;
-      this.marker.position.set(s.x, 0, s.z);
-    } else {
-      this.marker.visible = false;
+function completeStage(G) {
+  const M = G.mission;
+  const job = currentJob(G);
+  M.stage += 1;
+  M.visitedGarage = false;
+  if (M.stage >= job.stages.length) {
+    // Job complete: pay out, respect, unlocks, next job.
+    G.save.money += job.reward;
+    const district = districtAt(job.stages[0].x, job.stages[0].z);
+    G.save.respect[district] = (G.save.respect[district] || 0) + 1;
+    G.save.jobsDone = (G.save.jobsDone || 0) + 1;
+    G.audio.cash();
+    if (G.hud) {
+      G.hud.showBanner('JOB COMPLETE  +$' + job.reward.toLocaleString('en-US'), 3.5);
+      G.hud.showDialogue('MARLOWE', 'Marlowe: "Paid. $' + job.reward.toLocaleString('en-US') + ' — ' + district + ' respect up. Next job is ready."', 6);
     }
+    if (M.jobIndex === 2 && !G.save.weapons.smg.owned) {
+      G.save.weapons.smg.owned = true; G.save.weapons.smg.ammo = 120;
+      if (G.hud) G.hud.showBanner('SMG UNLOCKED — press 3', 3.5);
+    }
+    if (M.jobIndex === 5 && !G.save.weapons.shotgun.owned) {
+      G.save.weapons.shotgun.owned = true; G.save.weapons.shotgun.ammo = 24;
+      if (G.hud) G.hud.showBanner('SHOTGUN UNLOCKED — press 4', 3.5);
+    }
+    G.save.jobIndex = M.jobIndex + 1;
+    G.saveGame();
+    startJob(G, M.jobIndex + 1);
+  } else {
+    setupStage(G);
+    if (G.hud) G.hud.showDialogue('MARLOWE', STAGE_LINES[M.lineIdx++ % STAGE_LINES.length], 4);
   }
+}
 
-  targetPos() {
-    const s = this.stage();
-    if (s && s.type === 'goto') return new THREE.Vector3(s.x, 0, s.z);
-    return null;
+function failJob(G) {
+  const M = G.mission;
+  if (G.hud) {
+    G.hud.showBanner('JOB FAILED — try again', 3);
+    G.hud.showDialogue('MARLOWE', 'Marlowe: "Too slow. Run it again, and this time do not stop for coffee."', 5);
   }
+  startJob(G, M.jobIndex, true);
+}
 
-  // Returns 'stage', 'job', 'failed' or null.
-  update(dt, ctx) {
-    if (this.dialogueTimer > 0) this.dialogueTimer -= dt;
-    if (!this.active) {
-      this.marker.visible = false;
-      this.arrow.visible = false;
-      return null;
-    }
-    this.timer -= dt;
-    if (this.timer <= 0) {
-      this.dialogue = 'Marlowe: "Too slow. The job is burned. Try again."';
-      this.dialogueTimer = 7;
-      this.start(this.jobIndex);
-      return 'failed';
-    }
-    const s = this.stage();
-    if (!s) return null;
-    let done = false;
-    if (s.type === 'enterCar') done = !!ctx.inCar;
-    else if (s.type === 'goto') done = ctx.playerPos.distanceTo(new THREE.Vector3(s.x, 0, s.z)) < 5.2;
-    else if (s.type === 'stealModel') done = !!ctx.inCar && ctx.carModelName === s.model;
-    else if (s.type === 'wanted') done = ctx.wanted >= s.stars;
-    else if (s.type === 'loseHeat') done = ctx.wanted === 0;
-    // pulse the marker + aim the arrow
-    const pulse = 1 + Math.sin(performance.now() * 0.004) * 0.07;
-    this.marker.scale.set(pulse, 1, pulse);
-    const target = this.targetPos();
-    if (target) {
-      this.arrow.visible = true;
-      this.arrow.position.set(ctx.playerPos.x, 3.4 + Math.sin(performance.now() * 0.005) * 0.25, ctx.playerPos.z);
-      this.arrow.lookAt(target.x, this.arrow.position.y, target.z);
-      this.arrow.rotateX(Math.PI / 2);
-    } else {
-      this.arrow.visible = false;
-    }
-    if (!done) return null;
-    this.stageIndex += 1;
-    const j = this.job();
-    if (this.stageIndex >= j.stages.length) {
-      this.dialogue = j.done;
-      this.dialogueTimer = 9;
-      this.active = false;
-      this.marker.visible = false;
-      this.arrow.visible = false;
-      return 'job';
-    }
-    this.dialogue = `Marlowe: "${this.stage().text}."`;
-    this.dialogueTimer = 6;
-    this.placeMarker();
-    return 'stage';
+export function updateMissions(G, dt) {
+  const M = G.mission;
+  const job = currentJob(G);
+  const stage = currentStage(G);
+  if (!job || !stage) { M.arrow.visible = false; return; }
+  if (job.timer > 0) {
+    M.timerLeft -= dt;
+    if (M.timerLeft <= 0) { failJob(G); return; }
   }
+  const p = G.player.pos;
+  const dist = Math.hypot(stage.x - p.x, stage.z - p.z);
+  // Arrow above the player points at the objective.
+  M.arrow.visible = dist > 7;
+  M.arrow.position.set(p.x, 3.4 + Math.sin(G.time * 3) * 0.2, p.z);
+  M.arrow.rotation.z = 0;
+  M.arrow.rotation.y = Math.atan2(stage.x - p.x, stage.z - p.z);
+  M.marker.children[1].rotation.z = G.time * 0.8;
 
-  nextJob() {
-    const next = this.jobIndex + 1;
-    if (next >= JOBS.length) {
-      this.active = false;
-      this.dialogue = 'Marlowe: "All 10 jobs done. Neon Bay is yours. Free roam, anytime."';
-      this.dialogueTimer = 10;
-      return false;
-    }
-    this.start(next);
-    return true;
+  if (stage.kind === 'go' && dist < 5) completeStage(G);
+  else if (stage.kind === 'deliver' && dist < 6 && G.player.car) completeStage(G);
+  else if (stage.kind === 'steal' && M.markedCar && G.player.car === M.markedCar) {
+    if (job.heatOnSteal) addHeat(G, job.heatOnSteal);
+    completeStage(G);
+  } else if (stage.kind === 'escape') {
+    if (G.garagePoint && Math.hypot(G.garagePoint.x - p.x, G.garagePoint.z - p.z) < 7) M.visitedGarage = true;
+    if (M.visitedGarage && G.police.stars === 0) completeStage(G);
   }
+}
+
+export function missionInfo(G) {
+  const M = G.mission;
+  if (M.allDone) {
+    return { jobLabel: 'ALL JOBS DONE', title: 'Neon Bay is yours', stageLabel: 'Free roam', objective: 'Cruise the city, Marlowe has no more work', next: '—', timer: '' };
+  }
+  const job = JOBS[M.jobIndex];
+  const stage = job.stages[M.stage];
+  let timer = '';
+  if (job.timer > 0) {
+    const t = Math.max(0, Math.ceil(M.timerLeft));
+    timer = Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
+  }
+  return {
+    jobLabel: 'JOB ' + (M.jobIndex + 1) + '/10',
+    title: job.title,
+    stageLabel: 'STAGE ' + (M.stage + 1) + '/' + job.stages.length,
+    objective: stage.text,
+    next: 'NEXT: ' + stage.next,
+    timer,
+  };
 }
