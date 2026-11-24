@@ -4,31 +4,29 @@
 
 # Neon Bay Nights
 
-Neon Bay Nights drops you into a sunlit coastal city at golden hour and hands you a simple arrangement: a fixer named Marlowe has work, the streets are full of cars worth taking, and Bay PD would rather you did none of it. You alternate between running on foot and driving, follow glowing markers from one errand to the next, and decide for yourself how much attention to attract along the way. Everything runs in the browser from plain static files — the 3D city, the traffic, the police, the sound, and your saved progress all live locally, with no account and no network needed once the page has loaded.
+A true-3D open-world crime game that runs entirely in the browser. You are a wheelman in Neon Bay, a sunlit coastal city at golden hour, doing jobs for a fixer called Marlowe while Bay PD tries to ruin your day. The whole city is real-time Three.js: low-poly towers, a palm-lined beachfront boulevard, the ocean and a pier to the east, traffic that keeps to its lanes, and pedestrians who scatter when shots ring out. There is no install and no account — open the page, press START, and the city is yours. Everything runs from plain static files, including the vendored Three.js build and the synthesized sound, so it works offline once loaded.
 
-## The work
+## Ten jobs for Marlowe
 
-Marlowe's storyline is a chain of ten jobs that unlock one after another, each paying more than the last. Early jobs teach the loop gently — pick up a parked convertible near the water and bring it back undamaged, or carry a parcel across town against a countdown. Later jobs stack the pressure: multi-stop cash collections, deliveries that span all four districts in a single run, and thefts that summon a heavy police response the moment you touch the door handle. Some stages ask you to simply reach a place, some ask you to arrive in a specific stolen car, and the escape stages only count once you have reached the garage ring and the wanted level has fully cooled. A floating arrow over your character and a pulsing marker in the world always point at the current objective, and Marlowe talks you through each step in a dialogue box at the bottom of the screen. Finishing the tenth job opens the city up for free roaming.
+Marlowe's storyline is ten jobs that unlock in order and pay more as they get harder: steal a convertible by the Marina, run a parcel across town against a countdown, collect debts at three stops, and finish with a three-stage finale worth $5,000. Jobs mix four stage types — steal a marked car, drive to a place, deliver a car, and escape to the garage — and some thefts summon heat the moment you touch the door handle. A floating arrow above your character and a pulsing beam in the world always mark the objective, and Marlowe talks you through it in the dialogue box. Clear all ten and the city opens up for free roaming.
 
-## The city
+## Bay PD: five dispatch tiers
 
-The map is a compact grid of avenues and streets with the beach, the ocean, and a wooden pier along the eastern edge. Four districts give each corner its own character: Downtown packs the tallest towers, the Beachfront lines the boulevard with low hotels and palm trees, Old Town sits to the west, and the Marina tucks sailboats into the south-east corner. Neon signs, lit windows, street lamps, working traffic lights, parks with benches, a hospital, and Bay Garage fill out the blocks between the roads. Completing a job raises your standing in the district where that job began, and the interface keeps a running tally of respect for all four areas so you can watch your reputation spread across the map.
+Heat is measured in five stars, and every star level fields a named dispatch tier: Patrol (1 unit), Interceptor (2), Roadblock (3), Air Support (4), and Maximum Response (6). Units drive with different habits — some ram you head-on, others swing wide to cut you off — and from two stars they shoot at close range. At three stars the response changes shape: roadblocks appear on the road ahead and a helicopter joins the chase, orbiting overhead with a spotlight that tracks your position. The pursuit is deliberately tuned so it can pressure you without ever trapping you — officers keep a standoff distance, ease off inside eight metres, and get pushed aside instead of pinning your car. Break contact and the heat drains away; reach the glowing ring at Bay Garage and it clears instantly for $50.
 
-## Cars and driving
+## Driving and fighting
 
-Eight civilian models circulate through the city, each with its own top speed and acceleration: the Sunset Sedan, Bay Cruiser, Palm GT, Marina Hatch, Neon Coupe, Beach Buggy, Old Town Pickup, and Sol Convertible. Around two dozen of them are always driving the grid — keeping to lanes, braking for anything in front of them, and turning at intersections — while more sit parked along the kerbs waiting to be borrowed. Driving is deliberately forgiving: steering answers even at crawling pace, the handbrake tightens turns, and collisions dent the bodywork rather than ending the run. Damage shows up as smoke from the bonnet and, once a car is badly beaten up, a lower top speed. Police interceptors use the same driving model with light bars, a livery stripe, and sirens.
+Eight civilian models share the roads, each with its own top speed and acceleration: Sunset Sedan, Bay Cruiser, Palm GT, Marina Hatch, Neon Coupe, Beach Buggy, Old Town Pickup, and Sol Convertible. Around two dozen are always driving the grid while more sit parked along the kerbs, waiting to be borrowed — press E next to one and it is yours, at the cost of a little heat. Driving is forgiving arcade: steering answers even at crawling pace, the handbrake tightens turns, and collisions dent bodywork (and eventually smoke) rather than ending the run.
 
-## On foot
+On foot you walk, sprint, and fight with a four-slot weapon wheel on keys 1–4: fists and a pistol from the start, with an SMG and a shotgun earned through the story or found as glowing pickups around the city, next to health and armour pickups. The mouse aims with pointer lock; bystanders flee when shots ring out. Lose all your health and the wasted screen wakes you up outside the hospital with your wanted level cleared.
 
-Out of a car you can walk, sprint, and fight. Four weapon slots sit on number keys 1 to 4: bare fists and a pistol from the start, with a submachine gun and a shotgun earned through story progress or found as glowing pickups around the city, alongside health and armour pickups. Aiming uses the mouse with pointer lock, and attacks land on pedestrians and vehicles alike — bystanders scatter when shots ring out. Health and armour bars track how much punishment you can take; running out of health flashes a wasted screen and wakes you up outside the hospital with your wanted level cleared and a fresh four seconds of protection.
+## Four districts, respect, radio, saves
 
-## Bay PD
+The map splits into Downtown, Beachfront, Old Town, and Marina, and finishing a job raises your respect in the district where it began — the HUD keeps a running tally for all four. Two radio stations (a synth loop and a talk station, plus off) play from a synthesized engine hum, sirens, gunshots, crashes, horns, and cash chimes. Progress persists in browser storage between visits: money, story position, district respect, owned weapons and ammunition, and your radio and mute choices.
 
-Trouble is measured in heat, displayed as up to five stars. Each star level has a named dispatch tier — Patrol, Interceptor, Roadblock, Air Support, and Maximum Response — fielding one, two, three, four, and six ground units respectively. Officers drive with distinct habits, some charging straight at you and others swinging wide to cut you off, and from two stars they open fire at close range. At three stars the response changes character: roadblocks appear on the road ahead of you and a helicopter joins the chase, orbiting overhead with a spotlight that tracks your position. The pursuit is tuned so it can pressure you without ever trapping you — officers keep a standoff distance and get pushed aside rather than pinning your car in place. Break contact for a while and the heat drains away; reach the glowing ring at Bay Garage and it clears instantly for a fifty-dollar fee.
+## The HUD
 
-## Interface, sound, and saving
-
-The heads-up display is built around the job: a mission card shows the current objective, what comes next, and any countdown, while a dispatch panel lists every responding unit by callsign with its distance and tactic. Cash, the in-game clock, and your stars sit top-right; the district name, respect totals, and radio station sit top-centre; weapon slots with ammunition, health and armour bars, and a speedometer with the current vehicle's name and condition fill the right edge. A circular minimap in the corner draws the road grid, the shoreline, the hospital and garage, police units in red, the helicopter in orange, and your objective as a pulsing yellow dot. All audio is synthesized in code — engine hum that follows your speed, wailing sirens, gunshots, crashes, horns, cash chimes, and two radio stations (a synth loop and a talk station) plus an off setting. Progress persists in browser storage between visits: money, story position, district respect, owned weapons and ammunition, and your radio and mute choices.
+Every edge of the screen is working. Top-left is the mission card: job number, title, stage, objective, what comes next, and any countdown. Under it, the dispatch panel lists every responding unit by callsign with its live distance and tactic, including AIR 1 and roadblocks. Top-right holds money, the clock, and your stars; top-centre the district, respect totals, and radio station. The right edge carries the four weapon slots with ammunition, health and armour bars, and a speedometer with the current vehicle's name and condition. Bottom-left is a circular minimap drawing the road grid, the shoreline, the hospital and garage, police in red, the helicopter in orange, and your objective as a pulsing yellow dot. Marlowe's dialogue sits bottom-centre.
 
 ## Controls
 
@@ -46,13 +44,13 @@ The heads-up display is built around the job: a mission card shows the current o
 
 ## Screenshots
 
-![Cover shot](screenshots/01-cover.jpg)
+![Cover: high-speed chase with Bay PD and the helicopter overhead](screenshots/01-cover.jpg)
 
-![On-foot gameplay](screenshots/02-onfoot.jpg)
+![On foot with the SMG, police closing in](screenshots/02-onfoot.jpg)
 
-![Mission gameplay](screenshots/03-mission.jpg)
+![Package run under pursuit, timer ticking](screenshots/03-mission.jpg)
 
-![Escape gameplay](screenshots/04-escape.jpg)
+![Tier 5 escape with a roadblock ahead](screenshots/04-escape.jpg)
 
 ## Play locally
 
@@ -62,7 +60,7 @@ You need Node 22 and a browser; there is nothing to install. From the repository
 node serve.ts
 ```
 
-Then open http://localhost:8080 and press START. The server only serves the `game/` folder on your own machine. You can also open `game/index.html` through any static file host, since the game itself is self-contained — Three.js is vendored under `game/vendor/` and every other asset is generated in code.
+Then open http://localhost:8080 and press START. The server only serves the `game/` folder on your own machine. You can also host `game/index.html` through any static file host, since the game is self-contained — Three.js is vendored under `game/vendor/` and every other asset is generated in code.
 
 ## Hand-in
 
