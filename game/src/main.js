@@ -410,62 +410,63 @@ function frame() {
 frame();
 
 // ---- screenshot staging (?shot=1..4) ------------------------------------
-// Units are staged AHEAD of the player (f = metres forward, s = metres
-// to the side). Anything behind the player sits between the chase camera
-// and the car and gets cropped at the bottom of the frame, so no staged
-// unit ever goes behind. The pursuit AI then keeps the units closing and
-// flanking for the ~6 s until the capture.
-// The helicopter orbits 0.45 rad/s at 30 m up; at the default 62 deg FOV
-// its body sits above the top of the frame, so the cover shot widens the
-// camera to 100 deg. heliAhead is the orbit angle at staging time, picked
-// so the helicopter is straight ahead of the chase at capture time.
-function arrangeForShot(offsets, heliAhead) {
+// Police are placed AHEAD of the player (f = metres forward along the
+// heading, s = metres to the side). Anything staged behind the player
+// ends up between the chase camera and the car and gets cropped out of
+// the bottom of the frame, so every unit starts in front. The pursuit
+// AI then keeps them closing and flanking for the seconds until capture.
+// The helicopter circles at 0.45 rad/s, 30 m up; at the normal 62 deg
+// FOV its body sits above the top edge of the frame, so the cover shot
+// opens the camera up to 100 deg. heliAhead is the orbit angle at
+// staging time, chosen so the helicopter has drifted to straight ahead
+// by capture time.
+function placeUnits(offsets, heliAhead) {
   setTimeout(() => {
     const p = G.player;
     const heading = p.car ? p.car.heading : p.heading;
-    const fwdX = Math.sin(heading), fwdZ = Math.cos(heading);
-    const sideX = Math.cos(heading), sideZ = -Math.sin(heading);
+    const fx = Math.sin(heading), fz = Math.cos(heading);
+    const sx = Math.cos(heading), sz = -Math.sin(heading);
     G.police.units.forEach((unit, i) => {
       const o = offsets[i % offsets.length];
       unit.pos.set(
-        p.pos.x + fwdX * o.f + sideX * o.s, 0,
-        p.pos.z + fwdZ * o.f + sideZ * o.s,
+        p.pos.x + fx * o.f + sx * o.s, 0,
+        p.pos.z + fz * o.f + sz * o.s,
       );
       unit.heading = heading;
       unit.speed = p.car ? Math.abs(p.car.speed) : 0;
       syncCarMesh(unit);
     });
     if (G.police.heli) G.police.heli.angle = heliAhead;
-    // The tier banner shows for 3.2 s, but the capture happens at
-    // G.time ~= 1.2 s — hide it here so the frame is banner-free.
+    // The tier banner shows for 3.2 s, but capture happens at
+    // G.time ~= 1.2 s — hide it here so the frame stays banner-free.
     // (updateHud never re-shows it; it only hides it at tierUntil.)
     G.hud.tierBanner.style.display = 'none';
     snapCamera(G);
   }, 500);
 }
 
-// Capture happens at G.time ~= 1.6 s for driving shots (1.2 s on foot) —
-// early, while the staged units are still ahead of the player. Given
-// ~2 s the pursuit AI converges and every unit ends up trailing ~8 m
-// behind the player, between the chase camera and the car, occluding it.
-// Units staged at f 18-22 meet the player before capture and stop it;
-// staged at f 22-38 they are still 12-25 m ahead, closing, at capture.
-// The helicopter drifts 0.45 * (capture - 0.5) rad from its staged
-// angle by then (0.5 driving, 0.32 on foot). Straight ahead is PI/2
-// (forward is +z at heading 0); on foot the player faces -z, so
-// straight ahead is -PI/2.
-const HELI_AHEAD_DRIVE = Math.PI / 2 - 0.5;
-const HELI_AHEAD_FOOT = -Math.PI / 2 - 0.32;
+// Capture lands at G.time ~= 1.6 s while driving (1.2 s on foot) —
+// early, while the staged units are still in front of the player.
+// Given ~2 s the pursuit AI converges and every unit ends up trailing
+// ~8 m behind the player, between the chase camera and the car,
+// hiding it. Units staged at f 18-22 reach the player before capture
+// and stop it; staged at f 22-38 they are still 12-25 m ahead,
+// closing, at capture time. The helicopter drifts 0.45 * (capture -
+// 0.5) rad from its staged angle by then (0.5 driving, 0.32 on foot).
+// Straight ahead is PI/2 (forward is +z at heading 0); on foot the
+// player faces -z, so straight ahead is -PI/2.
+const HELI_FRONT_DRIVE = Math.PI / 2 - 0.5;
+const HELI_FRONT_FOOT = -Math.PI / 2 - 0.32;
 
 function stageShot(n) {
   startGame();
   const p = G.player;
   G.hud.dialogue.style.display = 'none';
   if (n === 1) {
-    // Cover: high-speed chase on the Beachfront boulevard, 4 stars.
+    // Cover: high-speed chase down the Beachfront boulevard, 4 stars.
     // Wide FOV so the helicopter body is in frame above its spotlight.
-    // Bay Cruiser tops out at 137 km/h — fast, but slow enough that the
-    // player is still short of the north wall at capture time.
+    // The Bay Cruiser tops out at 137 km/h — fast, but slow enough
+    // that the player is still short of the north wall at capture.
     G.camera.fov = 100;
     G.camera.updateProjectionMatrix();
     G.mission.jobIndex = 5; G.mission.stage = 1; G.mission.timerLeft = 80;
@@ -477,9 +478,9 @@ function stageShot(n) {
     // Roadblock early, so it is placed while the player is still far
     // from it and reads as a distant blockade up the road at capture.
     G.police.roadblockTimer = 0.6;
-    arrangeForShot([
+    placeUnits([
       { f: 35, s: -5 }, { f: 22, s: 7 }, { f: 25, s: -7 }, { f: 38, s: 4 },
-    ], HELI_AHEAD_DRIVE);
+    ], HELI_FRONT_DRIVE);
     G.hud.showDialogue('MARLOWE', 'Marlowe: "Bay PD is on you — lose them and bring that Bay Cruiser home!"', 30);
   } else if (n === 2) {
     // On foot, SMG drawn, sprinting down the boulevard with police closing.
@@ -491,9 +492,9 @@ function stageShot(n) {
     p.weapon = 'smg';
     addHeat(G, 3.2);
     G.police.roadblockTimer = 0.6;
-    arrangeForShot([
+    placeUnits([
       { f: 25, s: 0 }, { f: 18, s: -8 }, { f: 20, s: 8 },
-    ], HELI_AHEAD_FOOT);
+    ], HELI_FRONT_FOOT);
     G.hud.showDialogue('MARLOWE', 'Marlowe: "Heat is rising. Keep that SMG handy and move!"', 30);
     snapCamera(G);
   } else if (n === 3) {
@@ -507,9 +508,9 @@ function stageShot(n) {
     G.autopilot = { forward: true };
     addHeat(G, 3.2);
     G.police.roadblockTimer = 0.6;
-    arrangeForShot([
+    placeUnits([
       { f: 35, s: -5 }, { f: 22, s: 7 }, { f: 25, s: -7 },
-    ], HELI_AHEAD_DRIVE);
+    ], HELI_FRONT_DRIVE);
     G.hud.showDialogue('MARLOWE', 'Marlowe: "Package is in. Downtown drop, do not be late."', 30);
   } else if (n === 4) {
     // 5 stars, Tier 5: six units flanking ahead, roadblock ahead with the
@@ -521,13 +522,13 @@ function stageShot(n) {
     G.autopilot = { forward: true };
     addHeat(G, 5.2);
     G.police.roadblockTimer = 0.6;
-    arrangeForShot([
+    placeUnits([
       { f: 35, s: -5 }, { f: 22, s: 7 }, { f: 25, s: -7 },
       { f: 38, s: 4 }, { f: 28, s: 8 }, { f: 32, s: -8 },
-    ], HELI_AHEAD_DRIVE);
+    ], HELI_FRONT_DRIVE);
     G.hud.showDialogue('MARLOWE', 'Marlowe: "Maximum response! Get to Bay Garage, NOW!"', 30);
   }
-  // Refresh mission marker/HUD for the staged state.
+  // Refresh the mission marker and HUD for the staged state.
   const stage = currentStage(G);
   if (stage) G.mission.marker.position.set(stage.x, 0, stage.z);
   snapCamera(G);
@@ -537,7 +538,6 @@ if (shotMode) {
   if (n >= 1 && n <= 4) stageShot(n);
   else startGame();
 }
-
 // ---- debug / playtest hook ------------------------------------------------
 window.__NBN__ = {
   G,
